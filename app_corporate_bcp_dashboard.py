@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import random
@@ -480,6 +481,49 @@ COLLAB_STATE_DIR = os.environ.get(
     os.path.join(os.getcwd(), ".medical_cyber_bcp_state"),
 )
 SHARED_PHASE_BONUS_SECONDS = 5 * 60
+
+# ============================================================
+# Event background image assets
+# ============================================================
+# GitHub等へ配置する場合は、以下の構成を想定しています。
+# app_corporate_bcp_dashboard_v9_jp_revised_with_images.py
+# assets/events/event_01_ransomware.png など
+EVENT_IMAGE_DIR = os.environ.get(
+    "MEDICAL_BCP_EVENT_IMAGE_DIR",
+    os.path.join(os.getcwd(), "assets", "events"),
+)
+
+EVENT_IMAGE_MAP = {
+    # プログラム内の突発イベント
+    "bereal": "event_01_ransomware.png",
+    "chat_down": "event_03_network_down.png",
+
+    # 選択結果により誘発される突発イベント
+    "induced_misinformation": "event_10_crowded_reception.png",
+    "induced_reinfection": "event_06_server_down.png",
+    "induced_privacy": "event_01_ransomware.png",
+}
+
+
+def event_image_path(event_obj: Optional[dict]) -> Optional[str]:
+    """現在の突発イベントに対応する背景画像パスを返す。
+
+    画像が存在しない場合は None を返し、従来の緊急時背景にフォールバックする。
+    """
+    if not event_obj:
+        return None
+    filename = EVENT_IMAGE_MAP.get(event_obj.get("id"))
+    if not filename:
+        return None
+    path = os.path.join(EVENT_IMAGE_DIR, filename)
+    return path if os.path.exists(path) else None
+
+
+def image_file_to_data_uri(path: str) -> str:
+    """Streamlit Cloud等でも表示しやすいよう、PNGをdata URIへ変換する。"""
+    with open(path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 COLLAB_EXCLUDE_KEYS = {
     "bgm_volume", "se_volume", "bgm_enabled", "se_enabled", "last_se_key", "_choice_processing",
@@ -2690,13 +2734,56 @@ def render_clear():
 
 
 def apply_runtime_background():
-    if (
+    if not (
         st.session_state.get("simulation_started", False)
         and st.session_state.get("current_event") is not None
         and st.session_state.get("event_expanded", False)
         and st.session_state.get("pending_feedback") is None
         and not st.session_state.get("game_over", False)
     ):
+        return
+
+    current_event = st.session_state.get("current_event")
+    image_path = event_image_path(current_event)
+
+    if image_path:
+        image_uri = image_file_to_data_uri(image_path)
+        st.markdown(
+            f"""
+<style>
+.stApp {{
+    background-image:
+        linear-gradient(90deg, rgba(255,241,241,0.98) 0%, rgba(255,241,241,0.93) 42%, rgba(255,241,241,0.72) 100%),
+        url('{image_uri}') !important;
+    background-position: center center, right 3vw center !important;
+    background-size: cover, min(44vw, 680px) auto !important;
+    background-repeat: no-repeat, no-repeat !important;
+    background-attachment: fixed, fixed !important;
+}}
+.block-container {{
+    background: linear-gradient(180deg, rgba(255,241,241,0.90), rgba(243,246,250,0.88));
+    border-radius: 16px;
+}}
+.event-box {{
+    background: rgba(255,232,232,0.94) !important;
+    border-color: #d32f2f !important;
+    border-left-color: #b71c1c !important;
+    box-shadow: 0 12px 28px rgba(198,40,40,0.18) !important;
+}}
+.retro-panel-cyan, .feedback-best, .feedback-better, .feedback-bad, .training-purpose, .review-box {{
+    background-color: rgba(255,255,255,0.94) !important;
+}}
+@media (max-width: 900px) {{
+    .stApp {{
+        background-position: center center, center bottom !important;
+        background-size: cover, 78vw auto !important;
+    }}
+}}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
         st.markdown(
             """
 <style>
