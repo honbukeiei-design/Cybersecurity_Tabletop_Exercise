@@ -81,6 +81,26 @@ section[data-testid="stSidebar"] .stToggle div {
     color: #eef4fb !important;
 }
 
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] div,
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] span,
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] input {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+}
+section[data-testid="stSidebar"] .stSelectbox svg {
+    fill: #111827 !important;
+}
+section[data-testid="stSidebar"] .stTextInput input,
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+
 h1 {
     color: var(--navy) !important;
     font-size: clamp(1.8rem, 3.2vw, 3.2rem) !important;
@@ -626,6 +646,8 @@ def team_status_label(team: str) -> str:
 
 
 def render_shared_status():
+    if st.session_state.get("simulation_started", False):
+        return
     if shared_play_enabled():
         bonus = SHARED_PHASE_BONUS_SECONDS // 60
         st.success(f"共有プレイ中：{st.session_state.get('collab_team')}。同じチームを選んだ端末で進行状況を共有します。共有プレイ時は1フェーズあたり+{bonus}分です。")
@@ -1663,9 +1685,9 @@ def proceed_after_feedback():
     st.rerun()
 
 def check_status_game_over(triggered_by_choice: bool = False):
-    """ステータス条件によるGAME OVER。
+    """ステータス条件によるシミュレーション強制終了。
     感染拡大度・院内混乱度が100%以上、または診療継続力・社会的信用が0以下で発生。
-    選択後の場合はフィードバック画面にGAME OVER理由を統合する。
+    選択後の場合はフィードバック画面にシミュレーション強制終了理由を統合する。
     """
     reasons = []
 
@@ -1686,13 +1708,13 @@ def check_status_game_over(triggered_by_choice: bool = False):
 
     st.session_state.history.append({
         "time": time.strftime("%H:%M:%S"),
-        "mode": "ゲームオーバー",
+        "mode": "シミュレーション強制終了",
         "phase": PHASES[st.session_state.phase]["title"],
         "event": st.session_state.current_event["title"] if st.session_state.current_event else "",
         "role": st.session_state.role,
         "difficulty": st.session_state.difficulty,
         "choice": "ステータス条件",
-        "result": "GAME OVER",
+        "result": "シミュレーション強制終了",
         "feedback": reason_text.replace("<br>", " "),
         "infection": st.session_state.infection,
         "panic": st.session_state.panic,
@@ -1701,20 +1723,20 @@ def check_status_game_over(triggered_by_choice: bool = False):
     })
 
     if triggered_by_choice and st.session_state.pending_feedback is not None:
-        st.session_state.pending_feedback["feedback"] += f"<br><br><strong>GAME OVER：</strong>{reason_text}"
-        st.session_state.pending_feedback["result"] = f"{st.session_state.pending_feedback['result']} / GAME OVER"
+        st.session_state.pending_feedback["feedback"] += f"<br><br><strong>シミュレーション強制終了：</strong>{reason_text}"
+        st.session_state.pending_feedback["result"] = f"{st.session_state.pending_feedback['result']} / シミュレーション強制終了"
     else:
         st.session_state.pending_feedback = {
             "mode": "gameover",
-            "title": "GAME OVER",
+            "title": "シミュレーション強制終了",
             "choice": "ステータス条件",
             "quality": "BAD",
             "good": False,
-            "result": "GAME OVER",
+            "result": "シミュレーション強制終了",
             "feedback": reason_text,
         }
 
-    st.session_state.log.append("[GAME OVER] ステータス条件")
+    st.session_state.log.append("[シミュレーション強制終了] ステータス条件")
     play_se("gameover", f"gameover_status_{len(st.session_state.history)}")
     save_shared_state()
 
@@ -1728,18 +1750,18 @@ def check_timeout():
         return
     if remaining_time() <= 0:
         st.session_state.game_over = True
-        st.session_state.log.append("[GAME OVER] 制限時間超過")
+        st.session_state.log.append("[シミュレーション強制終了] 時間超過")
         play_se("gameover", f"gameover_timeout_{len(st.session_state.history)}")
         st.session_state.history.append({
             "time": time.strftime("%H:%M:%S"),
-            "mode": "ゲームオーバー",
+            "mode": "シミュレーション強制終了",
             "phase": PHASES[st.session_state.phase]["title"],
             "event": st.session_state.current_event["title"] if st.session_state.current_event else "",
             "role": st.session_state.role,
             "difficulty": st.session_state.difficulty,
-            "choice": "時間切れ",
-            "result": "GAME OVER",
-            "feedback": "制限時間を超過しました。インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。",
+            "choice": "時間超過",
+            "result": "時間超過でシミュレーション強制終了",
+            "feedback": "時間超過でシミュレーション強制終了となりました。インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。",
             "infection": st.session_state.infection,
             "panic": st.session_state.panic,
             "bcp": st.session_state.bcp,
@@ -1826,10 +1848,10 @@ html, body {{ margin:0; padding:0; width:0; height:0; overflow:hidden; backgroun
   }}
 
   function getPattern(){{
-    if(mode === "event") return {{notes:[880,740,880,660,740,620], tempo:170, gain:0.05, type:"square"}};
-    if(mode === "gameover") return {{notes:[180,160,140,120,100,80], tempo:260, gain:0.06, type:"sawtooth"}};
-    if(mode === "clear") return {{notes:[392,493.88,587.33,783.99,659.25,783.99], tempo:240, gain:0.045, type:"triangle"}};
-    return {{notes:[196,246.94,293.66,392,293.66,246.94,220,246.94], tempo:360, gain:0.035, type:"square"}};
+    if(mode === "event") return {{notes:[880,740,880,660,740,620], tempo:170, gain:0.05, type:"square", duration:0.07}};
+    if(mode === "gameover") return {{notes:[180,160,140,120,100,80], tempo:260, gain:0.06, type:"sawtooth", duration:0.16}};
+    if(mode === "clear") return {{notes:[392,493.88,587.33,783.99,659.25,783.99], tempo:240, gain:0.045, type:"triangle", duration:0.12}};
+    return {{notes:[196,196,233.08,207.65,196,174.61,196,246.94,196,174.61,164.81,196], tempo:185, gain:0.048, type:"sawtooth", duration:0.14}};
   }}
 
   function startBgm(){{
@@ -1843,7 +1865,7 @@ html, body {{ margin:0; padding:0; width:0; height:0; overflow:hidden; backgroun
     var p = getPattern();
     var i=0;
     timer=setInterval(function(){{
-      beep(p.notes[i%p.notes.length],0.07,p.type,p.gain);
+      beep(p.notes[i%p.notes.length],p.duration || 0.07,p.type,p.gain);
       i++;
     }}, p.tempo);
   }}
@@ -1937,7 +1959,7 @@ def play_se(kind: str, key: str):
 def render_timer_widget():
     """サイドバー専用タイマー"""
     if st.session_state.game_over:
-        label = "OVER"
+        label = "終了"
         remaining = 0
         limit = current_phase_limit()
     elif st.session_state.pending_feedback is not None:
@@ -1962,13 +1984,21 @@ def render_timer_widget():
   <div class="timebar-fill" style="width:{percent}%;"></div>
 </div>
 <div style="text-align:center;">制限時間：{limit}秒</div>
-<div class="sidebar-button">時間超過でGAME OVER</div>
+<div class="sidebar-button">時間超過でシミュレーション強制終了</div>
 """,
         unsafe_allow_html=True,
     )
 
 
 def render_sidebar():
+    if st.session_state.get("simulation_started", False):
+        st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">リスク指標</div>', unsafe_allow_html=True)
+        status_row("", "感染拡大リスク", st.session_state.infection, "#c62828")
+        status_row("", "院内混乱リスク", st.session_state.panic, "#f9a825")
+        status_row("", "診療継続力", st.session_state.bcp, "#1769aa")
+        status_row("", "社会的信用", st.session_state.trust, "#2e7d32")
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
     st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">訓練設定</div>', unsafe_allow_html=True)
     diff = st.sidebar.selectbox("難易度", list(DIFFICULTIES.keys()), index=list(DIFFICULTIES.keys()).index(st.session_state.difficulty))
     role = st.sidebar.selectbox("役割", ROLES, index=ROLES.index(st.session_state.role))
@@ -2006,17 +2036,18 @@ def render_sidebar():
     if st.sidebar.button("設定変更 / リセット"):
         reset_game()
         st.rerun()
-    if shared_play_enabled():
+    if shared_play_enabled() and not st.session_state.get("simulation_started", False):
         st.sidebar.markdown(f'<div class="sidebar-button">共有：{st.session_state.collab_team}<br>自動同期中 / 1フェーズ +5分</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sidebar-button">GL6.0観点に基づく評価</div>', unsafe_allow_html=True)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
-    st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">リスク指標</div>', unsafe_allow_html=True)
-    status_row("", "感染拡大リスク", st.session_state.infection, "#c62828")
-    status_row("", "院内混乱リスク", st.session_state.panic, "#f9a825")
-    status_row("", "診療継続力", st.session_state.bcp, "#1769aa")
-    status_row("", "社会的信用", st.session_state.trust, "#2e7d32")
-    st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    if not st.session_state.get("simulation_started", False):
+        st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">リスク指標</div>', unsafe_allow_html=True)
+        status_row("", "感染拡大リスク", st.session_state.infection, "#c62828")
+        status_row("", "院内混乱リスク", st.session_state.panic, "#f9a825")
+        status_row("", "診療継続力", st.session_state.bcp, "#1769aa")
+        status_row("", "社会的信用", st.session_state.trust, "#2e7d32")
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">制限時間</div>', unsafe_allow_html=True)
     render_timer_widget()
@@ -2037,6 +2068,8 @@ def render_sidebar():
 
 
 def render_header():
+    if st.session_state.get("simulation_started", False):
+        return
     compact = st.session_state.get("simulation_started", False)
     wrapper_class = "compact-header" if compact else ""
     st.markdown(
@@ -2045,7 +2078,7 @@ def render_header():
 <div class="header-grid">
   <div>
     <h1>MEDICAL CYBER BCP</h1>
-    <div class="subtitle">医療機関サイバー攻撃対応 テーブルトップ訓練</div>
+    <div class="subtitle">医療機関サイバー攻撃対応 机上訓練</div>
   </div>
 </div>
 </div>
@@ -2091,7 +2124,7 @@ def render_start_screen():
     <div class="event-desc">
       左側の訓練設定パネルで、難易度と役割を設定してください。<br>
       設定後に下のボタンを押すと、PHASE 01から開始します。<br>
-      制限時間を超過するとGAME OVERになります。判断結果は医療情報システムの安全管理に関するガイドライン第6.0版の観点を踏まえてフィードバックされます。
+      制限時間を超過すると、時間超過でシミュレーション強制終了となります。判断結果は医療情報システムの安全管理に関するガイドライン第6.0版の観点を踏まえてフィードバックされます。
     </div>
   </div>
 </div>
@@ -2192,8 +2225,6 @@ def render_choices():
                 play_se("click", f"click_{st.session_state.phase}_{st.session_state.role}_{i}_{time.time()}")
                 choose(i)
 
-    st.markdown('<div class="footer-note">選択肢をクリックするとフィードバック画面へ進みます</div>', unsafe_allow_html=True)
-
 
 def render_feedback():
     fb = st.session_state.pending_feedback
@@ -2254,9 +2285,9 @@ def render_game_over():
     st.markdown(
         """
 <div class="feedback-bad">
-  <div class="feedback-title" style="color:#c62828;">GAME OVER</div>
+  <div class="feedback-title" style="color:#c62828;">シミュレーション強制終了</div>
   <div class="feedback-text">
-    制限時間を超過しました。<br>
+    時間超過でシミュレーション強制終了となりました。<br>
     インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。
   </div>
 </div>
@@ -2353,6 +2384,31 @@ def render_clear():
         st.rerun()
 
 
+
+def apply_runtime_background():
+    if (
+        st.session_state.get("simulation_started", False)
+        and st.session_state.get("current_event") is not None
+        and st.session_state.get("event_expanded", False)
+        and st.session_state.get("pending_feedback") is None
+        and not st.session_state.get("game_over", False)
+    ):
+        st.markdown(
+            """
+<style>
+.stApp { background: #fff1f1 !important; }
+.block-container { background: linear-gradient(180deg, rgba(255,241,241,0.96), rgba(243,246,250,0.96)); }
+.event-box {
+    background: #ffe8e8 !important;
+    border-color: #d32f2f !important;
+    border-left-color: #b71c1c !important;
+    box-shadow: 0 12px 28px rgba(198,40,40,0.14) !important;
+}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+
 # ============================================================
 # Main
 # ============================================================
@@ -2372,6 +2428,7 @@ if (
 maybe_random_event()
 check_timeout()
 check_status_game_over()
+apply_runtime_background()
 render_sidebar()
 render_header()
 render_shared_status()
