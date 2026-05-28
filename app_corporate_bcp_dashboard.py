@@ -482,7 +482,7 @@ COLLAB_STATE_DIR = os.environ.get(
 SHARED_PHASE_BONUS_SECONDS = 5 * 60
 
 COLLAB_EXCLUDE_KEYS = {
-    "bgm_volume", "se_volume", "bgm_enabled", "se_enabled", "last_se_key",
+    "bgm_volume", "se_volume", "bgm_enabled", "se_enabled", "last_se_key", "_choice_processing",
     "collab_mode_input", "collab_team_input",
     "manual_shared_refresh_sidebar", "manual_shared_refresh_main",
 }
@@ -1303,6 +1303,10 @@ def init_state():
         st.session_state.game_over = False
     if "pending_feedback" not in st.session_state:
         st.session_state.pending_feedback = None
+    if "pending_induced_event" not in st.session_state:
+        st.session_state.pending_induced_event = None
+    if "_choice_processing" not in st.session_state:
+        st.session_state._choice_processing = False
     if "history" not in st.session_state:
         st.session_state.history = []
     if "seen_event_ids" not in st.session_state:
@@ -1335,6 +1339,8 @@ def reset_game():
     st.session_state.game_over = False
     st.session_state.simulation_started = False
     st.session_state.pending_feedback = None
+    st.session_state.pending_induced_event = None
+    st.session_state._choice_processing = False
     st.session_state.history = []
     st.session_state.seen_event_ids = set()
     st.session_state.seen_induced_event_ids = set()
@@ -1369,6 +1375,8 @@ def start_simulation():
     st.session_state.game_over = False
     st.session_state.phase = 0
     st.session_state.pending_feedback = None
+    st.session_state.pending_induced_event = None
+    st.session_state._choice_processing = False
     st.session_state.history = []
     st.session_state.seen_event_ids = set()
     st.session_state.seen_induced_event_ids = set()
@@ -1578,126 +1586,163 @@ def maybe_induce_event(quality: str):
         return False
 
     ev = random.choice(candidates)
-    st.session_state.current_event = ev
-    st.session_state.event_expanded = True
+    # ここでは current_event を即時差し替えない。
+    # 選択ボタン押下中に画面コンテキストが変わると、フィードバック画面へ遷移せず
+    # リスク値だけが変わったように見えるため、フィードバック確認後に発生させる。
+    st.session_state.pending_induced_event = ev
     st.session_state.seen_induced_event_ids.add(ev["id"])
-    apply_effect(ev["effect"])
-    st.session_state.last_event_at = time.time()
-    st.session_state.log.append(f"[誘発事象] {ev['title']}")
-    play_se("event", f"induced_{ev['id']}_{len(st.session_state.history)}")
-    save_shared_state()
     return True
 
 
 def choose(idx: int):
-    mode, obj = get_context()
-    choices = get_current_choices()
-    if idx < 0 or idx >= len(choices):
-        st.warning("選択肢の取得に失敗しました。画面を更新して再度選択してください。")
+    """選択肢押下時の状態更新。
+
+    突発イベント対応時に、選択処理中のイベント差し替えや二重実行が起きると
+    「リスク値だけ変わってフィードバックへ遷移しない」状態に見えるため、
+    ここでは必ず 1 回の押下につき pending_feedback を確定してから rerun する。
+    """
+    if st.session_state.get("_choice_processing", False):
         return
-    text, quality = choices[idx]
+    if st.session_state.get("pending_feedback") is not None:
+        return
+    if st.session_state.get("completed", False) or st.session_state.get("game_over", False):
+        return
 
-    if quality == "BEST":
-        recover = random.randint(2, 5)
-        st.session_state.phase_started_at += recover
-        st.session_state.infection = clamp(st.session_state.infection - random.randint(4, 9))
-        st.session_state.panic = clamp(st.session_state.panic - random.randint(5, 12))
-        st.session_state.bcp = clamp(st.session_state.bcp + random.randint(5, 12))
-        st.session_state.trust = clamp(st.session_state.trust + random.randint(4, 10))
-        result = "BEST"
-        feedback_prefix = "最善に近い判断です。"
-        se_kind = "best"
-    elif quality == "BETTER":
-        recover = random.randint(1, 3)
-        st.session_state.phase_started_at += recover
-        st.session_state.infection = clamp(st.session_state.infection + random.randint(0, 4))
-        st.session_state.panic = clamp(st.session_state.panic + random.randint(0, 6))
-        st.session_state.bcp = clamp(st.session_state.bcp + random.randint(0, 4))
-        st.session_state.trust = clamp(st.session_state.trust + random.randint(0, 3))
-        result = "BETTER"
-        feedback_prefix = "一定の効果はありますが、判断の優先順位としては不十分です。副作用として新たなリスクを誘発する可能性があります。"
-        se_kind = "better"
-    else:
-        recover = 0
-        st.session_state.infection = clamp(st.session_state.infection + random.randint(10, 22))
-        st.session_state.panic = clamp(st.session_state.panic + random.randint(12, 26))
-        st.session_state.bcp = clamp(st.session_state.bcp - random.randint(10, 24))
-        st.session_state.trust = clamp(st.session_state.trust - random.randint(12, 28))
-        result = "BAD"
-        feedback_prefix = "危険な判断です。この対応により追加インシデントを誘発する可能性があります。"
-        se_kind = "bad"
+    st.session_state._choice_processing = True
+    try:
+        mode, obj = get_context()
+        context_event_id = obj.get("id") if mode == "event" else None
+        choices = get_current_choices()
+        if idx < 0 or idx >= len(choices):
+            st.session_state._choice_processing = False
+            st.warning("選択肢の取得に失敗しました。画面を更新して再度選択してください。")
+            return
+        text, quality = choices[idx]
 
-    base_feedback = obj["feedback"][quality != "BAD"]
-    # 突発イベント対応中は、選択結果によって別の誘発イベントへ即時切替しない。
-    # ここで current_event が差し替わると、フィードバック表示前に画面状態だけが変わり、
-    # 「パラメーターだけ変わって遷移しない」ように見える場合があるため。
-    induced = False if mode == "event" else maybe_induce_event(quality)
-    guideline_text = guideline_viewpoint_for(obj["title"])
-    induced_text = ""
-    if induced and st.session_state.current_event is not None:
-        induced_text = f"<br><br><strong>誘発された突発イベント：</strong>{st.session_state.current_event['title']}<br>{st.session_state.current_event['desc']}"
-    feedback_text = f"{feedback_prefix}<br>{base_feedback}{induced_text}<br><br><strong>GL6.0観点：</strong>{guideline_text}"
-    title = obj["title"]
+        if quality == "BEST":
+            recover = random.randint(2, 5)
+            st.session_state.phase_started_at += recover
+            st.session_state.infection = clamp(st.session_state.infection - random.randint(4, 9))
+            st.session_state.panic = clamp(st.session_state.panic - random.randint(5, 12))
+            st.session_state.bcp = clamp(st.session_state.bcp + random.randint(5, 12))
+            st.session_state.trust = clamp(st.session_state.trust + random.randint(4, 10))
+            result = "BEST"
+            feedback_prefix = "最善に近い判断です。"
+            se_kind = "best"
+        elif quality == "BETTER":
+            recover = random.randint(1, 3)
+            st.session_state.phase_started_at += recover
+            st.session_state.infection = clamp(st.session_state.infection + random.randint(0, 4))
+            st.session_state.panic = clamp(st.session_state.panic + random.randint(0, 6))
+            st.session_state.bcp = clamp(st.session_state.bcp + random.randint(0, 4))
+            st.session_state.trust = clamp(st.session_state.trust + random.randint(0, 3))
+            result = "BETTER"
+            feedback_prefix = "一定の効果はありますが、判断の優先順位としては不十分です。副作用として新たなリスクを誘発する可能性があります。"
+            se_kind = "better"
+        else:
+            recover = 0
+            st.session_state.infection = clamp(st.session_state.infection + random.randint(10, 22))
+            st.session_state.panic = clamp(st.session_state.panic + random.randint(12, 26))
+            st.session_state.bcp = clamp(st.session_state.bcp - random.randint(10, 24))
+            st.session_state.trust = clamp(st.session_state.trust - random.randint(12, 28))
+            result = "BAD"
+            feedback_prefix = "危険な判断です。この対応により追加インシデントを誘発する可能性があります。"
+            se_kind = "bad"
 
-    record = {
-        "time": time.strftime("%H:%M:%S"),
-        "mode": "突発イベント" if mode == "event" else "通常フェーズ",
-        "phase": PHASES[st.session_state.phase]["title"],
-        "event": obj["title"] if mode == "event" else "",
-        "role": st.session_state.role,
-        "difficulty": st.session_state.difficulty,
-        "training_purpose": "初動判断、報告連絡、紙運用、SNS/個人情報対応、BCP切替判断の確認",
-        "choice": text,
-        "result": result,
-        "feedback": feedback_text.replace("<br>", " "),
-        "guideline_viewpoint": guideline_viewpoint_for(obj["title"]),
-        "induced_event": st.session_state.current_event["title"] if induced and st.session_state.current_event else "",
-        "infection": st.session_state.infection,
-        "panic": st.session_state.panic,
-        "bcp": st.session_state.bcp,
-        "trust": st.session_state.trust,
-    }
-    st.session_state.history.append(record)
+        base_feedback = obj["feedback"][quality != "BAD"]
 
-    st.session_state.pending_feedback = {
-        "mode": mode,
-        "title": title,
-        "choice": text,
-        "quality": quality,
-        "good": quality != "BAD",
-        "result": result,
-        "feedback": feedback_text,
-        "induced": induced,
-    }
+        # 通常フェーズの選択だけが、次画面以降の突発イベントを誘発できる。
+        # 突発イベント対応中は別イベントを発生させない。
+        st.session_state.pending_induced_event = None
+        induced = False if mode == "event" else maybe_induce_event(quality)
+        pending_ev = st.session_state.get("pending_induced_event") if induced else None
 
-    st.session_state.log.append(f"[{result}] {text[:26]}")
-    play_se(se_kind, f"feedback_{len(st.session_state.history)}_{result}")
-    check_status_game_over(triggered_by_choice=True)
-    save_shared_state()
-    set_shared_query_params()
-    st.rerun()
+        guideline_text = guideline_viewpoint_for(obj["title"])
+        induced_text = ""
+        if pending_ev is not None:
+            induced_text = f"<br><br><strong>誘発された突発イベント：</strong>{pending_ev['title']}<br>{pending_ev['desc']}"
+        feedback_text = f"{feedback_prefix}<br>{base_feedback}{induced_text}<br><br><strong>GL6.0観点：</strong>{guideline_text}"
+        title = obj["title"]
+
+        record = {
+            "time": time.strftime("%H:%M:%S"),
+            "mode": "突発イベント" if mode == "event" else "通常フェーズ",
+            "phase": PHASES[st.session_state.phase]["title"],
+            "event": obj["title"] if mode == "event" else "",
+            "role": st.session_state.role,
+            "difficulty": st.session_state.difficulty,
+            "training_purpose": "初動判断、報告連絡、紙運用、SNS/個人情報対応、BCP切替判断の確認",
+            "choice": text,
+            "result": result,
+            "feedback": feedback_text.replace("<br>", " "),
+            "guideline_viewpoint": guideline_viewpoint_for(obj["title"]),
+            "induced_event": pending_ev["title"] if pending_ev is not None else "",
+            "infection": st.session_state.infection,
+            "panic": st.session_state.panic,
+            "bcp": st.session_state.bcp,
+            "trust": st.session_state.trust,
+        }
+        st.session_state.history.append(record)
+
+        st.session_state.pending_feedback = {
+            "mode": mode,
+            "event_id": context_event_id,
+            "title": title,
+            "choice": text,
+            "quality": quality,
+            "good": quality != "BAD",
+            "result": result,
+            "feedback": feedback_text,
+            "induced": induced,
+        }
+
+        st.session_state.log.append(f"[{result}] {text[:26]}")
+        play_se(se_kind, f"feedback_{len(st.session_state.history)}_{result}")
+        check_status_game_over(triggered_by_choice=True)
+        st.session_state._choice_processing = False
+        save_shared_state()
+        set_shared_query_params()
+        st.rerun()
+    except Exception as exc:
+        st.session_state._choice_processing = False
+        st.error(f"選択処理中にエラーが発生しました: {exc}")
+        save_shared_state()
 
 def proceed_after_feedback():
     if st.session_state.pending_feedback is None:
         return
     if st.session_state.game_over:
+        st.session_state._choice_processing = False
         save_shared_state()
         set_shared_query_params()
         st.rerun()
 
-    mode = st.session_state.pending_feedback["mode"]
+    mode = st.session_state.pending_feedback.get("mode")
+    had_induced = bool(st.session_state.pending_feedback.get("induced"))
+    pending_ev = st.session_state.get("pending_induced_event")
     st.session_state.pending_feedback = None
+    st.session_state._choice_processing = False
 
     if mode == "event":
-        # 突発イベントを完了し、通常フェーズの状態へ確実に戻す。
+        # 対応済みの突発イベントを確実に閉じ、通常フェーズへ戻す。
         st.session_state.event_expanded = False
         st.session_state.current_event = None
+        st.session_state.pending_induced_event = None
         st.session_state.phase_started_at = time.time()
-    elif st.session_state.current_event is not None and st.session_state.event_expanded:
-        # 通常選択の結果、誘発イベントが発生した場合は次フェーズへ進まずイベント対応へ移る。
+    elif had_induced and pending_ev is not None:
+        # 通常フェーズ選択の結果として発生した突発イベントは、
+        # フィードバック確認後に初めて current_event へ反映する。
+        st.session_state.current_event = pending_ev
+        st.session_state.event_expanded = True
+        apply_effect(pending_ev.get("effect", {}))
+        st.session_state.last_event_at = time.time()
+        st.session_state.log.append(f"[誘発事象] {pending_ev['title']}")
+        st.session_state.pending_induced_event = None
+        play_se("event", f"induced_{pending_ev['id']}_{len(st.session_state.history)}")
         st.session_state.phase_started_at = time.time()
     else:
         # 通常フェーズのフィードバック後は次フェーズへ進む。
+        st.session_state.pending_induced_event = None
         if st.session_state.phase < len(PHASES) - 1:
             st.session_state.phase += 1
             st.session_state.phase_started_at = time.time()
@@ -2058,7 +2103,9 @@ def render_sidebar():
         reset_game()
         st.rerun()
     if st.sidebar.button("設定変更 / リセット"):
+        st.session_state._choice_processing = False
         reset_game()
+        save_shared_state()
         st.rerun()
     if shared_play_enabled() and not st.session_state.get("simulation_started", False):
         st.sidebar.markdown(f'<div class="sidebar-button">共有：{st.session_state.collab_team}<br>自動同期中 / 1フェーズ +5分</div>', unsafe_allow_html=True)
@@ -2238,15 +2285,19 @@ def render_event():
 
 def render_choices():
     choices = get_current_choices()
+    processing = bool(st.session_state.get("_choice_processing", False))
 
     cols = st.columns(3)
     for i, (text, quality) in enumerate(choices):
         with cols[i % 3]:
             key_event = st.session_state.current_event["id"] if st.session_state.current_event else "phase"
-            if st.button(f"{i+1}. {text}", key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}"):
-                play_se("click", f"click_{st.session_state.phase}_{st.session_state.role}_{i}_{time.time()}")
-                choose(i)
-
+            st.button(
+                f"{i+1}. {text}",
+                key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
+                disabled=processing,
+                on_click=choose,
+                args=(i,),
+            )
 
 def render_feedback():
     fb = st.session_state.pending_feedback
