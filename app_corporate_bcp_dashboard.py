@@ -1762,6 +1762,9 @@ def check_status_game_over(triggered_by_choice: bool = False):
     感染拡大度・院内混乱度が100%以上、または診療継続力・社会的信用が0以下で発生。
     選択後の場合はフィードバック画面にシミュレーション強制終了理由を統合する。
     """
+    if st.session_state.get("game_over", False):
+        return
+
     reasons = []
 
     if st.session_state.infection >= 100:
@@ -1971,28 +1974,46 @@ html, body {{ margin:0; padding:0; width:0; height:0; overflow:hidden; backgroun
     )
 
 
+def _se_sequence(kind: str) -> str:
+    if kind == "event":
+        return "beep(880,0.08,'square',0.08);setTimeout(function(){beep(440,0.12,'sawtooth',0.08);},90);"
+    if kind == "gameover":
+        return "beep(180,0.22,'sawtooth',0.09);setTimeout(function(){beep(120,0.28,'sawtooth',0.09);},230);"
+    if kind == "best":
+        return "beep(523.25,0.07,'square',0.07);setTimeout(function(){beep(659.25,0.07,'square',0.07);},80);setTimeout(function(){beep(783.99,0.12,'square',0.07);},160);"
+    if kind == "better":
+        return "beep(440,0.08,'square',0.06);setTimeout(function(){beep(554.37,0.1,'square',0.06);},90);"
+    if kind == "click":
+        return "beep(660,0.045,'square',0.055);"
+    return "beep(220,0.12,'sawtooth',0.07);setTimeout(function(){beep(160,0.16,'sawtooth',0.07);},130);"
+
+
 def play_se(kind: str, key: str):
-    """画面遷移時・ボタン押下時のSE。key単位で1回だけ鳴らす。"""
+    """SE再生を予約する。
+
+    Streamlit のボタン処理中に components.html() を直接描画すると、
+    画面遷移直後に警告や一瞬のエラー表示が出ることがあるため、
+    ここでは session_state に予約だけを入れ、通常描画タイミングで再生する。
+    """
     if not st.session_state.get("se_enabled", True):
         return
     if st.session_state.get("last_se_key") == key:
         return
-
     st.session_state.last_se_key = key
-    se_volume = st.session_state.get("se_volume", 70) / 100.0
+    st.session_state["_queued_se"] = {"kind": kind, "key": key}
 
-    if kind == "event":
-        seq = "beep(880,0.08,'square',0.08);setTimeout(function(){beep(440,0.12,'sawtooth',0.08);},90);"
-    elif kind == "gameover":
-        seq = "beep(180,0.22,'sawtooth',0.09);setTimeout(function(){beep(120,0.28,'sawtooth',0.09);},230);"
-    elif kind == "best":
-        seq = "beep(523.25,0.07,'square',0.07);setTimeout(function(){beep(659.25,0.07,'square',0.07);},80);setTimeout(function(){beep(783.99,0.12,'square',0.07);},160);"
-    elif kind == "better":
-        seq = "beep(440,0.08,'square',0.06);setTimeout(function(){beep(554.37,0.1,'square',0.06);},90);"
-    elif kind == "click":
-        seq = "beep(660,0.045,'square',0.055);"
-    else:
-        seq = "beep(220,0.12,'sawtooth',0.07);setTimeout(function(){beep(160,0.16,'sawtooth',0.07);},130);"
+
+def render_queued_se():
+    """予約済みSEを通常描画タイミングで1回だけ再生する。"""
+    item = st.session_state.pop("_queued_se", None)
+    if not item:
+        return
+    if not st.session_state.get("se_enabled", True):
+        return
+
+    kind = item.get("kind", "click")
+    se_volume = st.session_state.get("se_volume", 70) / 100.0
+    seq = _se_sequence(kind)
 
     components.html(
         f"""
@@ -2027,7 +2048,6 @@ def play_se(kind: str, key: str):
 """,
         height=0,
     )
-
 
 def render_timer_widget():
     """サイドバー専用タイマー"""
@@ -2097,20 +2117,16 @@ def render_sidebar():
                 import_shared_state(data, keep_identity=True)
         else:
             reset_game()
-        st.rerun()
+        # ボタン・選択操作による再描画は Streamlit 標準の実行サイクルに任せる
     if diff != st.session_state.difficulty:
         st.session_state.difficulty = diff
         reset_game()
-        st.rerun()
+        # 再描画は標準サイクルに任せる
     if role != st.session_state.role:
         st.session_state.role = role
         reset_game()
-        st.rerun()
-    if st.sidebar.button("設定変更 / リセット"):
-        st.session_state._choice_processing = False
-        reset_game()
-        save_shared_state()
-        st.rerun()
+        # 再描画は標準サイクルに任せる
+    st.sidebar.button("設定変更 / リセット", on_click=transition_reset_simulation)
     if shared_play_enabled() and not st.session_state.get("simulation_started", False):
         st.sidebar.markdown(f'<div class="sidebar-button">共有：{st.session_state.collab_team}<br>自動同期中 / 1フェーズ +5分</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sidebar-button">GL6.0観点に基づく評価</div>', unsafe_allow_html=True)
@@ -2188,6 +2204,24 @@ def render_training_purpose():
     )
 
 
+
+def transition_start_simulation():
+    play_se("click", f"click_start_{time.time()}")
+    start_simulation()
+
+
+def transition_reset_simulation():
+    play_se("click", f"click_reset_{time.time()}")
+    st.session_state._choice_processing = False
+    st.session_state.pending_induced_event = None
+    reset_game()
+    save_shared_state()
+
+
+def transition_after_feedback():
+    play_se("click", f"click_next_{time.time()}")
+    proceed_after_feedback()
+
 def render_start_screen():
     render_training_purpose()
     st.markdown(
@@ -2222,10 +2256,7 @@ def render_start_screen():
 """,
             unsafe_allow_html=True,
         )
-        if st.button("シミュレーションスタート"):
-            play_se("click", f"click_start_{time.time()}")
-            start_simulation()
-            st.rerun()
+        st.button("シミュレーションスタート", on_click=transition_start_simulation)
 
 
 def render_phase():
@@ -2295,15 +2326,13 @@ def render_choices():
     for i, (text, quality) in enumerate(choices):
         with cols[i % 3]:
             key_event = st.session_state.current_event["id"] if st.session_state.current_event else "phase"
-            clicked = st.button(
+            st.button(
                 f"{i+1}. {text}",
                 key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
                 disabled=processing,
+                on_click=choose,
+                args=(i,),
             )
-            if clicked:
-                play_se("click", f"click_choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}_{time.time()}")
-                choose(i)
-                st.rerun()
 
 def render_feedback():
     fb = st.session_state.pending_feedback
@@ -2343,9 +2372,7 @@ def render_feedback():
 
     if st.session_state.game_over:
         render_history_download()
-        if st.button("シミュレーションを最初から"):
-            reset_game()
-            st.rerun()
+        st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
         return
 
     if fb["mode"] == "event":
@@ -2355,10 +2382,7 @@ def render_feedback():
 
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        if st.button(button_label):
-            play_se("click", f"click_next_{time.time()}")
-            proceed_after_feedback()
-            st.rerun()
+        st.button(button_label, on_click=transition_after_feedback)
 
 def render_game_over():
     play_se("gameover", f"gameover_screen_{len(st.session_state.history)}")
@@ -2376,10 +2400,7 @@ def render_game_over():
     )
     render_history_download()
     render_review_questions()
-    if st.button("シミュレーションを最初から"):
-        play_se("click", f"click_reset_{time.time()}")
-        reset_game()
-        st.rerun()
+    st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
 
 
 def render_history_download():
@@ -2458,10 +2479,7 @@ def render_clear():
     )
     render_history_download()
     render_review_questions()
-    if st.button("シミュレーションを最初から"):
-        play_se("click", f"click_reset_{time.time()}")
-        reset_game()
-        st.rerun()
+    st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
 
 
 
@@ -2510,6 +2528,7 @@ check_timeout()
 check_status_game_over()
 apply_runtime_background()
 render_sidebar()
+render_queued_se()
 render_header()
 render_shared_status()
 
