@@ -12,12 +12,12 @@ from streamlit_autorefresh import st_autorefresh
 
 
 # ============================================================
-# MEDICAL CYBER BCP
+# 医療機関サイバーBCP訓練
 # Formal tabletop exercise / Feedback flow / Timeout game over
 # ============================================================
 
 st.set_page_config(
-    page_title="MEDICAL CYBER BCP",
+    page_title="医療機関サイバーBCP訓練",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -800,7 +800,7 @@ GUIDELINE_VIEWPOINTS = {
     "PHASE 01：発報": "システム運用編：異常検知時の初動、証跡保全、感染拡大防止。企画管理編：インシデント発生時の連絡・報告手順。",
     "PHASE 02：指揮所設置": "経営管理編：安全管理責任、組織的管理、意思決定体制。企画管理編：運用管理規程・体制整備。",
     "PHASE 03：外部連携": "経営管理編：委託先・関係機関との責任分界。企画管理編：連絡体制、外部委託先管理、報告記録。",
-    "PHASE 04：紙運用切替": "企画管理編：非常時運用・代替運用手順。システム運用編：可用性確保、業務継続、誤入力・誤認防止。",
+    "PHASE 04：紙運用への切替": "企画管理編：非常時運用・代替運用手順。システム運用編：可用性確保、業務継続、誤入力・誤認防止。",
     "PHASE 05：院内混乱と情報統制": "経営管理編：教育・周知、情報取扱い責任。企画管理編：職員教育、SNS・情報持出し対策。",
     "PHASE 06：バックアップ判断": "システム運用編：バックアップ、復旧、マルウェア対策、アクセス制御、ログ管理。",
     "PHASE 07：医療トリアージ": "経営管理編：医療安全と事業継続の判断。企画管理編：BCP、優先業務、代替手順。",
@@ -844,16 +844,16 @@ def feedback_text_for(obj: dict, good: bool) -> str:
 PHASES = [
     {
         "title": "PHASE 01：発報",
-        "scene": "外来ピーク時、医事課端末に身代金要求画面が表示された。",
-        "objective": "最初の一手で感染拡大と現場混乱を抑える。",
+        "scene": "外来対応中、医事課端末にランサムウェアによる身代金要求画面が表示された。",
+        "objective": "初動対応により感染拡大と院内混乱を防止する。",
         "icon": "🚨",
         "feedback": {
             True: "初動として適切です。感染端末への不用意な操作を避け、指揮系統と報告経路を確保できました。",
-            False: "初動として危険です。再起動や様子見は証跡消失・感染拡大・報告遅延につながります。",
+            False: "初動対応として不適切です。再起動や様子見は証跡消失・感染拡大・報告遅延につながります。",
         },
         "choices": {
             "管理監督者": [
-                ("対策本部を即時招集し、PC操作停止と状況報告を全館へ指示する", True),
+                ("対策本部を即時招集し、PC操作停止と状況報告を全職員へ指示する", True),
                 ("医療安全・情報担当・事務部門から初動班を編成する", True),
                 ("現場混乱を避けるため『通常の不具合』として様子を見る", False),
                 ("診療制限の可能性を部門長へ伝え、待機を指示する", True),
@@ -864,23 +864,23 @@ PHASES = [
                 ("感染端末をネットワークから隔離し、証跡を保全する", True),
                 ("基幹ネットワークの遮断範囲を判断し、電子カルテ系を切り離す", True),
                 ("まず感染端末を再起動して復旧を試す", False),
-                ("EDR・認証ログで横展開の兆候を確認する", True),
+                ("EDR・認証ログで感染拡大の兆候を確認する", True),
                 ("原因調査を優先し、遮断は後回しにする", False),
                 ("サーバー・端末・バックアップの状態を対策本部へ報告する", True),
             ],
             "職員": [
-                ("画面に触れず、上長と情報担当へ即時報告する", True),
+                ("端末を操作せず、上長と情報担当へ即時報告する", True),
                 ("画面写真を撮り、端末を操作しないよう周囲へ伝える", True),
                 ("再起動すれば直ると思い、端末を再起動する", False),
                 ("近くの別PCで同じ業務を続ける", False),
                 ("患者には『確認中です』と説明し、推測で話さない", True),
-                ("同僚へ口頭で共有し、同じ症状がないか確認する", True),
+                ("同僚へ状況を共有し、同じ症状がないか確認する", True),
             ],
         },
     },
     {
         "title": "PHASE 02：指揮所設置",
-        "scene": "院内電話が鳴り止まず、誰が最終判断者か不明確になっている。",
+        "scene": "院内からの問い合わせが急増し、指揮命令系統が不明確になっている。",
         "objective": "指揮命令系統を明確にする。",
         "icon": "🏥",
         "feedback": {
@@ -891,8 +891,8 @@ PHASES = [
             "管理監督者": [
                 ("院長・事務部長・医療安全・情報担当で対策本部を設置する", True),
                 ("判断者、記録係、広報窓口、現場連絡係を明確にする", True),
-                ("各部門に自由判断で対応するよう任せる", False),
-                ("15分ごとの状況報告ルールを決める", True),
+                ("各部門に個別判断での対応を任せる", False),
+                ("15分ごとの状況報告体制を整備する", True),
                 ("情報担当だけに対応を任せ、経営層報告は後回しにする", False),
                 ("院内放送で対策本部の指示に従うよう周知する", True),
             ],
@@ -902,7 +902,7 @@ PHASES = [
                 ("SEだけで復旧作業を進め、意思決定者への報告を省く", False),
                 ("管理者権限の利用状況を確認する", True),
                 ("現場からの個別依頼をすべて優先して対応する", False),
-                ("通信遮断の影響を部門別に整理する", True),
+                ("ネットワーク遮断の影響を部門別に整理する", True),
             ],
             "職員": [
                 ("所属長の指示系統を確認し、勝手な判断を避ける", True),
@@ -921,13 +921,13 @@ PHASE_TEMPLATES = [
     ("PHASE 03：外部連携", "ベンダー、警察、監督官庁、自治体、近隣医療機関への連絡判断が必要。", "支援ラインと報告ラインを確立する。", "📞",
      "外部連携として適切です。支援要請と記録化により、技術・法務・地域医療の支援を受けやすくなります。",
      "外部連携として不適切です。報告保留や個人判断の連絡は、支援遅延や説明責任上の問題につながります。"),
-    ("PHASE 04：紙運用切替", "電子カルテ停止が長引き、受付・診察・検査・薬剤・会計の紙運用が必要。", "医療安全を守りながら業務継続へ移行する。", "📄",
+    ("PHASE 04：紙運用への切替", "電子カルテ停止が長期化し、受付・診察・検査・薬剤・会計の紙運用が必要。", "医療安全を守りながら業務継続へ移行する。", "📄",
      "紙運用への移行として適切です。様式統一、本人確認、ダブルチェックが医療安全を支えます。",
      "紙運用として危険です。記録後回しや独自様式は、転記ミス・処方ミス・患者誤認につながります。"),
-    ("PHASE 05：院内混乱と情報統制", "患者・職員・外部からの問い合わせが増え、不正確な情報が広がり始めている。", "現場混乱と不正確な情報発信を抑える。", "📣",
+    ("PHASE 05：院内混乱と情報統制", "患者・職員・外部からの問い合わせが増え、未確認情報が拡散し始めている。", "現場混乱と不正確な情報発信を抑える。", "📣",
      "情報統制として適切です。定型文、窓口一本化、SNS注意喚起により、誤情報と不安の拡大を抑えられます。",
-     "情報統制として危険です。推測発言や個人投稿は、誤情報・炎上・信用低下につながります。"),
-    ("PHASE 06：バックアップ判断", "バックアップサーバーは生きているように見えるが、安全確認は未完了。", "二次感染を防ぎながら復旧経路を確保する。", "💾",
+     "情報管理上、不適切な対応です。推測発言や個人投稿は、誤情報・炎上・信用低下につながります。"),
+    ("PHASE 06：バックアップ判断", "バックアップサーバーは稼働しているように見えるが、安全確認は未完了。", "二次感染を防ぎながら復旧経路を確保する。", "💾",
      "バックアップ対応として適切です。隔離検証と復旧点確認により、二次感染を避けながら復旧できます。",
      "バックアップ対応として危険です。未確認の接続や証跡破壊は、バックアップ暗号化や原因不明化につながります。"),
     ("PHASE 07：医療トリアージ", "予定手術、透析、救急、入院患者の検査結果確認が競合している。", "限られた情報で医療安全を最大化する。", "🚑",
@@ -936,12 +936,12 @@ PHASE_TEMPLATES = [
     ("PHASE 08：情報漏えい疑惑", "攻撃者の脅迫文に『患者情報を取得した』と記載がある。", "個人情報・広報・法務の初動を誤らない。", "🔐",
      "漏えい疑惑対応として適切です。断定せず、証跡保全・事実確認・相談準備を進める姿勢が重要です。",
      "漏えい疑惑対応として危険です。根拠なき断言やログ削除は、信用失墜と説明不能につながります。"),
-    ("PHASE 09：広報・患者説明", "報道機関と患者家族から問い合わせが急増している。", "事実、未確定事項、診療制限を正確に伝える。", "🎤",
+    ("PHASE 09：広報・患者説明", "報道機関や患者家族から問い合わせが急増している。", "事実、未確定事項、診療制限を正確に伝える。", "🎤",
      "広報対応として適切です。事実と未確定事項を分け、説明窓口を統一することで信頼を維持できます。",
      "広報対応として危険です。過小表現や逃げの姿勢は、炎上・不信・二次被害につながります。"),
     ("PHASE 10：復旧・再発防止", "診療は段階再開。監査ログと改善計画が求められている。", "訓練ログを再発防止策へつなげる。", "🏁",
      "再発防止として適切です。時系列、判断根拠、改善策、次回訓練へつなげることで組織学習になります。",
-     "再発防止として危険です。振り返り省略や責任追及偏重では、次のインシデントに備えられません。"),
+     "再発防止の観点で課題があります。振り返り省略や責任追及偏重では、次のインシデントに備えられません。"),
 ]
 
 ROLE_PHASE_CHOICES = {
@@ -971,7 +971,7 @@ ROLE_PHASE_CHOICES = {
             ("院外へ持ち出す資料がないか確認する", True),
         ],
     },
-    "紙運用切替": {
+    "紙運用への切替": {
         "管理監督者": [
             ("紙カルテ・紙処方・紙検査依頼への切替を正式に宣言する", True),
             ("救急・透析・入院患者を優先し、新規外来を制限する", True),
@@ -983,7 +983,7 @@ ROLE_PHASE_CHOICES = {
         "SE": [
             ("使用可能端末と使用禁止端末を明確にリスト化する", True),
             ("紙運用中に必要な参照データの安全な取り出し方法を確認する", True),
-            ("未確認端末を臨時接続して印刷だけ行う", False),
+            ("安全確認前の端末を一時接続して印刷を行う", False),
             ("部門システムごとの停止・稼働状況を掲示用に整理する", True),
             ("復旧を急ぎ、遮断したネットワークを一部戻す", False),
             ("紙運用に必要なプリンタや帳票の利用可否を確認する", True),
@@ -1144,7 +1144,7 @@ PHASE_CHOICE_OVERRIDES = {
             ("患者情報を含む紙記録や画面表示の扱いを厳格にする", "BEST"),
             ("不審な情報の外部掲載を見つけたら拡散せず報告する", "BEST"),
             ("漏えい疑惑について聞かれても定型文で対応する", "BETTER"),
-            ("不安なので同僚チャットに患者情報の画面を共有する", "BAD"),
+            ("不安から患者情報が表示された画面を同僚チャットへ共有する", "BAD"),
             ("患者に『多分漏れていません』と個人判断で伝える", "BAD"),
             ("記録物の置き忘れや写真撮影がないか周囲を確認する", "BETTER"),
         ],
@@ -1213,7 +1213,7 @@ RANDOM_EVENTS = [
     {
         "id": "bereal",
         "title": "職員がSNSに院内の乗っ取り画面を投稿！",
-        "desc": "電子カルテのランサムウェア画面を、ある職員が何気なくSNSに投稿。患者名や端末情報が写り込んだ可能性があり、外部からの問い合わせが急増している。",
+        "desc": "電子カルテのランサムウェア画面を、ある職員が深く考えずSNSへ投稿。患者名や端末情報が写り込んだ可能性があり、院外からの問い合わせが急増している。",
         "icon": "📱",
         "effect": {"panic": 20, "bcp": -14, "trust": -34},
         "feedback": {
@@ -1250,12 +1250,12 @@ RANDOM_EVENTS = [
     {
         "id": "chat_down",
         "title": "院内チャット停止",
-        "desc": "業務チャットが停止。連絡手段が内線・紙メモ中心になり、現場の混乱が増している。",
+        "desc": "業務チャットが停止。連絡手段が内線・紙による連絡が中心となり、現場の混乱が増している。",
         "icon": "💬",
         "effect": {"panic": 18, "bcp": -14, "trust": -8},
         "feedback": {
             True: "代替連絡として適切です。内線、紙掲示、連絡係、記録様式を使って情報の混乱を抑えられます。",
-            False: "代替連絡として危険です。私用SNSや口伝え中心の連絡は、患者情報漏えいと誤情報拡散につながります。",
+            False: "代替連絡として危険です。私用SNSや口伝え中心の連絡は、患者情報漏えいと誤った情報の拡散につながります。",
         },
         "choices": {
             "管理監督者": [
@@ -1752,7 +1752,7 @@ def choose(idx: int):
             st.session_state.bcp = clamp(st.session_state.bcp + random.randint(5, 12))
             st.session_state.trust = clamp(st.session_state.trust + random.randint(4, 10))
             result = "BEST"
-            feedback_prefix = "最善に近い判断です。"
+            feedback_prefix = "適切な初動判断です。"
             se_kind = "best"
         elif quality == "BETTER":
             recover = random.randint(1, 3)
@@ -1771,7 +1771,7 @@ def choose(idx: int):
             st.session_state.bcp = clamp(st.session_state.bcp - random.randint(10, 24))
             st.session_state.trust = clamp(st.session_state.trust - random.randint(12, 28))
             result = "BAD"
-            feedback_prefix = "危険な判断です。この対応により追加インシデントを誘発する可能性があります。"
+            feedback_prefix = "リスクの高い判断です。この対応により追加インシデントを誘発する可能性があります。"
             se_kind = "bad"
 
         base_feedback = feedback_text_for(obj, quality != "BAD")
@@ -1878,9 +1878,9 @@ def proceed_after_feedback():
     set_shared_query_params()
 
 def check_status_game_over(triggered_by_choice: bool = False):
-    """ステータス条件によるシミュレーション強制終了。
-    感染拡大度・院内混乱度が100%以上、または診療継続力・社会的信用が0以下で発生。
-    選択後の場合はフィードバック画面にシミュレーション強制終了理由を統合する。
+    """ステータス条件による訓練終了。
+    感染拡大度・院内混乱度が100%以上、または診療継続性・対外的信頼が0以下で発生。
+    選択後の場合はフィードバック画面に訓練終了理由を統合する。
     """
     if st.session_state.get("game_over", False):
         return
@@ -1888,13 +1888,13 @@ def check_status_game_over(triggered_by_choice: bool = False):
     reasons = []
 
     if st.session_state.infection >= 100:
-        reasons.append("感染拡大度が100％に到達しました。院内システム全体への感染拡大を止められません。")
+        reasons.append("システム感染拡大度が100％に到達しました。院内システム全体への感染拡大を抑制できない状態です。")
     if st.session_state.panic >= 100:
-        reasons.append("院内混乱度が100％に到達しました。現場統制が崩壊しました。")
+        reasons.append("院内業務混乱度が100％に到達しました。現場統制が困難な状態です。")
     if st.session_state.bcp <= 0:
-        reasons.append("診療継続力が0％に到達しました。安全な診療継続ができません。")
+        reasons.append("診療継続性が0％に到達しました。安全な診療継続ができません。")
     if st.session_state.trust <= 0:
-        reasons.append("社会的信用が0％に到達しました。説明責任と信頼維持に失敗しました。")
+        reasons.append("対外的信頼が0％に到達しました。説明責任と信頼維持に失敗しました。")
 
     if not reasons:
         return
@@ -1904,13 +1904,13 @@ def check_status_game_over(triggered_by_choice: bool = False):
 
     st.session_state.history.append({
         "time": time.strftime("%H:%M:%S"),
-        "mode": "シミュレーション強制終了",
+        "mode": "訓練終了",
         "phase": PHASES[st.session_state.phase]["title"],
         "event": st.session_state.current_event["title"] if st.session_state.current_event else "",
         "role": st.session_state.role,
         "difficulty": st.session_state.difficulty,
         "choice": "ステータス条件",
-        "result": "シミュレーション強制終了",
+        "result": "訓練終了",
         "feedback": reason_text.replace("<br>", " "),
         "infection": st.session_state.infection,
         "panic": st.session_state.panic,
@@ -1919,20 +1919,20 @@ def check_status_game_over(triggered_by_choice: bool = False):
     })
 
     if triggered_by_choice and st.session_state.pending_feedback is not None:
-        st.session_state.pending_feedback["feedback"] += f"<br><br><strong>シミュレーション強制終了：</strong>{reason_text}"
-        st.session_state.pending_feedback["result"] = f"{st.session_state.pending_feedback['result']} / シミュレーション強制終了"
+        st.session_state.pending_feedback["feedback"] += f"<br><br><strong>訓練終了：</strong>{reason_text}"
+        st.session_state.pending_feedback["result"] = f"{st.session_state.pending_feedback['result']} / 訓練終了"
     else:
         st.session_state.pending_feedback = {
             "mode": "gameover",
-            "title": "シミュレーション強制終了",
+            "title": "訓練終了",
             "choice": "ステータス条件",
             "quality": "BAD",
             "good": False,
-            "result": "シミュレーション強制終了",
+            "result": "訓練終了",
             "feedback": reason_text,
         }
 
-    st.session_state.log.append("[シミュレーション強制終了] ステータス条件")
+    st.session_state.log.append("[訓練終了] ステータス条件")
     play_se("gameover", f"gameover_status_{len(st.session_state.history)}")
     save_shared_state()
 
@@ -1946,18 +1946,18 @@ def check_timeout():
         return
     if remaining_time() <= 0:
         st.session_state.game_over = True
-        st.session_state.log.append("[シミュレーション強制終了] 時間超過")
+        st.session_state.log.append("[訓練終了] 時間超過")
         play_se("gameover", f"gameover_timeout_{len(st.session_state.history)}")
         st.session_state.history.append({
             "time": time.strftime("%H:%M:%S"),
-            "mode": "シミュレーション強制終了",
+            "mode": "訓練終了",
             "phase": PHASES[st.session_state.phase]["title"],
             "event": st.session_state.current_event["title"] if st.session_state.current_event else "",
             "role": st.session_state.role,
             "difficulty": st.session_state.difficulty,
             "choice": "時間超過",
-            "result": "時間超過でシミュレーション強制終了",
-            "feedback": "時間超過でシミュレーション強制終了となりました。インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。",
+            "result": "制限時間を超過したため訓練終了",
+            "feedback": "制限時間を超過したため訓練終了となりました。インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。",
             "infection": st.session_state.infection,
             "panic": st.session_state.panic,
             "bcp": st.session_state.bcp,
@@ -2196,8 +2196,8 @@ def render_timer_widget():
 <div class="timebar">
   <div class="timebar-fill" style="width:{percent}%;"></div>
 </div>
-<div style="text-align:center;">制限時間：{limit}秒</div>
-<div class="sidebar-button">時間超過でシミュレーション強制終了</div>
+<div style="text-align:center;">フェーズ制限時間：{limit}秒</div>
+<div class="sidebar-button">制限時間を超過したため訓練終了</div>
 """,
         unsafe_allow_html=True,
     )
@@ -2206,10 +2206,10 @@ def render_timer_widget():
 def render_sidebar():
     if st.session_state.get("simulation_started", False):
         st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">リスク指標</div>', unsafe_allow_html=True)
-        status_row("", "感染拡大リスク", st.session_state.infection, "#c62828")
-        status_row("", "院内混乱リスク", st.session_state.panic, "#f9a825")
-        status_row("", "診療継続力", st.session_state.bcp, "#1769aa")
-        status_row("", "社会的信用", st.session_state.trust, "#2e7d32")
+        status_row("", "システム感染拡大リスク", st.session_state.infection, "#c62828")
+        status_row("", "院内業務混乱リスク", st.session_state.panic, "#f9a825")
+        status_row("", "診療継続性", st.session_state.bcp, "#1769aa")
+        status_row("", "対外的信頼", st.session_state.trust, "#2e7d32")
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">訓練設定</div>', unsafe_allow_html=True)
@@ -2246,7 +2246,7 @@ def render_sidebar():
         st.session_state.role = role
         reset_game()
         # 再描画は標準サイクルに任せる
-    if st.sidebar.button("設定変更 / リセット"):
+    if st.sidebar.button("設定変更・初期化"):
         transition_reset_simulation()
         st.rerun()
     if shared_play_enabled() and not st.session_state.get("simulation_started", False):
@@ -2256,13 +2256,13 @@ def render_sidebar():
 
     if not st.session_state.get("simulation_started", False):
         st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">リスク指標</div>', unsafe_allow_html=True)
-        status_row("", "感染拡大リスク", st.session_state.infection, "#c62828")
-        status_row("", "院内混乱リスク", st.session_state.panic, "#f9a825")
-        status_row("", "診療継続力", st.session_state.bcp, "#1769aa")
-        status_row("", "社会的信用", st.session_state.trust, "#2e7d32")
+        status_row("", "システム感染拡大リスク", st.session_state.infection, "#c62828")
+        status_row("", "院内業務混乱リスク", st.session_state.panic, "#f9a825")
+        status_row("", "診療継続性", st.session_state.bcp, "#1769aa")
+        status_row("", "対外的信頼", st.session_state.trust, "#2e7d32")
         st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
-    st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">制限時間</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="retro-panel"><div class="panel-title">フェーズ制限時間</div>', unsafe_allow_html=True)
     render_timer_widget()
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
@@ -2290,8 +2290,8 @@ def render_header():
 <div class="{wrapper_class}">
 <div class="header-grid">
   <div>
-    <h1>MEDICAL CYBER BCP</h1>
-    <div class="subtitle">医療機関サイバー攻撃対応 机上訓練</div>
+    <h1>医療機関サイバーBCP訓練</h1>
+    <div class="subtitle">医療機関向けサイバー攻撃対応机上訓練</div>
   </div>
 </div>
 </div>
@@ -2350,12 +2350,12 @@ def render_start_screen():
         """
 <div class="event-box">
   <div class="event-main">
-    <div class="event-label">シミュレーション設定</div>
+    <div class="event-label">訓練設定</div>
     <div class="event-title">難易度と役割を選択してください</div>
     <div class="event-desc">
-      左側の訓練設定パネルで、難易度と役割を設定してください。<br>
-      設定後に下のボタンを押すと、PHASE 01から開始します。<br>
-      制限時間を超過すると、時間超過でシミュレーション強制終了となります。判断結果は医療情報システムの安全管理に関するガイドライン第6.0版の観点を踏まえてフィードバックされます。
+      左側の訓練設定パネルで、難易度と役割を選択してください。<br>
+      設定後に下のボタンを押すと、PHASE 01から訓練を開始します。<br>
+      フェーズ制限時間を超過すると、その時点で訓練終了となります。判断結果は医療情報システムの安全管理に関するガイドライン第6.0版の観点を踏まえてフィードバックされます。
     </div>
   </div>
 </div>
@@ -2378,7 +2378,7 @@ def render_start_screen():
 """,
             unsafe_allow_html=True,
         )
-        if st.button("シミュレーションスタート"):
+        if st.button("訓練を開始する"):
             transition_start_simulation()
             st.rerun()
 
@@ -2393,7 +2393,7 @@ def render_phase():
     <div class="phase-title">{phase["title"]}</div>
     <div class="phase-text">シーン：{phase["scene"]}</div>
     <div class="phase-text">目的：{phase["objective"]}</div>
-    <div class="phase-text" style="color:#5f6b7a;margin-top:0.45rem;font-weight:700;">このフェーズにおいて最善と考えられる対応方針を選択してください。</div>
+    <div class="phase-text" style="color:#5f6b7a;margin-top:0.45rem;font-weight:700;">このフェーズで最も適切と考えられる対応方針を選択してください。</div>
   </div>
   <div class="retro-panel-cyan">
     <div style="color:var(--navy);font-size:1.0rem;font-weight:700;text-align:center;">残り時間</div>
@@ -2420,7 +2420,7 @@ def render_event():
     <div class="event-title">{ev["title"]}</div>
     <div class="event-desc">{ev["desc"]}</div>
     <div class="event-label" style="font-size:0.9rem;margin-top:0.65rem;">
-      この突発事象への対応方針を選択してください
+      この突発事象に対する対応方針を選択してください
     </div>
   </div>
 </div>
@@ -2432,7 +2432,7 @@ def render_event():
             f"""
 <div class="mini-event">
   <div>
-    <div style="color:#8f1717;font-size:0.85rem;font-weight:700;">突発事象対応済み</div>
+    <div style="color:#8f1717;font-size:0.85rem;font-weight:700;">突発事象への対応済み</div>
     <div style="color:#1f2937;font-size:1rem;font-weight:700;">{ev["title"]}</div>
   </div>
   <div style="color:#5f6b7a;font-size:0.85rem;">完了</div>
@@ -2569,15 +2569,15 @@ def render_feedback():
 
     if st.session_state.game_over:
         render_history_download()
-        if st.button("シミュレーションを最初から"):
+        if st.button("もう一度訓練を実施する"):
             transition_reset_simulation()
             st.rerun()
         return
 
     if fb["mode"] == "event":
-        button_label = "突発イベント対応を完了してフェーズへ戻る"
+        button_label = "突発イベントへの対応を完了し、フェーズへ戻る"
     else:
-        button_label = "次のフェーズへ進む"
+        button_label = "次のフェーズに進む"
 
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
@@ -2591,9 +2591,9 @@ def render_game_over():
     st.markdown(
         """
 <div class="feedback-bad">
-  <div class="feedback-title" style="color:#c62828;">シミュレーション強制終了</div>
+  <div class="feedback-title" style="color:#c62828;">訓練終了</div>
   <div class="feedback-text">
-    時間超過でシミュレーション強制終了となりました。<br>
+    制限時間を超過したため訓練終了となりました。<br>
     インシデント対応では、判断遅延そのものが感染拡大・医療安全リスク・信用低下につながります。
   </div>
 </div>
@@ -2602,7 +2602,7 @@ def render_game_over():
     )
     render_history_download()
     render_review_questions()
-    if st.button("シミュレーションを最初から"):
+    if st.button("もう一度訓練を実施する"):
         transition_reset_simulation()
         st.rerun()
 
@@ -2612,7 +2612,7 @@ def render_history_download():
         return
     df = pd.DataFrame(st.session_state.history)
     st.download_button(
-        "選択・フィードバック履歴をCSVでダウンロード",
+        "訓練結果をCSV形式でダウンロード",
         data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="medical_cyber_bcp_choices_feedback.csv",
         mime="text/csv",
@@ -2658,7 +2658,7 @@ def render_review_questions():
     })
 
     st.download_button(
-        "講評・振り返り設問CSVをダウンロード",
+        "振り返りシートをCSV形式でダウンロード",
         data=review_df.to_csv(index=False).encode("utf-8-sig"),
         file_name="medical_cyber_bcp_review_questions.csv",
         mime="text/csv",
@@ -2673,9 +2673,9 @@ def render_clear():
         f"""
 <div class="event-box" style="border-left-color:#2e7d32;background:#f5fbf6;border-color:#bbd7bd;">
   <div class="event-main">
-    <div class="event-label" style="color:#2e7d32;">シミュレーション完了</div>
+    <div class="event-label" style="color:#2e7d32;">訓練完了</div>
     <div class="event-title" style="color:#1b5e20;">総合防御スコア：{score} / {max_score}</div>
-    <div class="event-desc">選択履歴とフィードバックをCSVで保存し、院内BCP訓練の振り返りに利用してください。</div>
+    <div class="event-desc">訓練結果とフィードバックをCSVで保存し、院内BCP訓練の振り返りに活用してください。</div>
   </div>
 </div>
 """,
@@ -2683,7 +2683,7 @@ def render_clear():
     )
     render_history_download()
     render_review_questions()
-    if st.button("シミュレーションを最初から"):
+    if st.button("もう一度訓練を実施する"):
         transition_reset_simulation()
         st.rerun()
 
