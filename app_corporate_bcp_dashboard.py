@@ -580,7 +580,10 @@ def load_shared_state(team=None):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f, object_hook=_json_object_hook)
     except Exception as exc:
-        st.warning(f"共有状態の読み込みに失敗しました: {exc}")
+        try:
+            st.session_state.setdefault("log", []).append(f"[WARN] 共有状態読込失敗: {exc}")
+        except Exception:
+            pass
         return None
 
 
@@ -596,7 +599,10 @@ def save_shared_state():
         os.replace(tmp_path, path)
         st.session_state["_shared_loaded_at"] = data["_shared_saved_at"]
     except Exception as exc:
-        st.warning(f"共有状態の保存に失敗しました: {exc}")
+        try:
+            st.session_state.setdefault("log", []).append(f"[WARN] 共有状態保存失敗: {exc}")
+        except Exception:
+            pass
 
 
 def sync_shared_state_from_file(force: bool = False):
@@ -1615,7 +1621,7 @@ def choose(idx: int):
         choices = get_current_choices()
         if idx < 0 or idx >= len(choices):
             st.session_state._choice_processing = False
-            st.warning("選択肢の取得に失敗しました。画面を更新して再度選択してください。")
+            st.session_state.log.append("[WARN] 選択肢の取得に失敗")
             return
         text, quality = choices[idx]
 
@@ -1702,10 +1708,9 @@ def choose(idx: int):
         st.session_state._choice_processing = False
         save_shared_state()
         set_shared_query_params()
-        st.rerun()
     except Exception as exc:
         st.session_state._choice_processing = False
-        st.error(f"選択処理中にエラーが発生しました: {exc}")
+        st.session_state.log.append(f"[ERROR] 選択処理: {exc}")
         save_shared_state()
 
 def proceed_after_feedback():
@@ -1715,7 +1720,7 @@ def proceed_after_feedback():
         st.session_state._choice_processing = False
         save_shared_state()
         set_shared_query_params()
-        st.rerun()
+        return
 
     mode = st.session_state.pending_feedback.get("mode")
     had_induced = bool(st.session_state.pending_feedback.get("induced"))
@@ -1751,7 +1756,6 @@ def proceed_after_feedback():
 
     save_shared_state()
     set_shared_query_params()
-    st.rerun()
 
 def check_status_game_over(triggered_by_choice: bool = False):
     """ステータス条件によるシミュレーション強制終了。
@@ -2291,13 +2295,15 @@ def render_choices():
     for i, (text, quality) in enumerate(choices):
         with cols[i % 3]:
             key_event = st.session_state.current_event["id"] if st.session_state.current_event else "phase"
-            st.button(
+            clicked = st.button(
                 f"{i+1}. {text}",
                 key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
                 disabled=processing,
-                on_click=choose,
-                args=(i,),
             )
+            if clicked:
+                play_se("click", f"click_choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}_{time.time()}")
+                choose(i)
+                st.rerun()
 
 def render_feedback():
     fb = st.session_state.pending_feedback
@@ -2352,6 +2358,7 @@ def render_feedback():
         if st.button(button_label):
             play_se("click", f"click_next_{time.time()}")
             proceed_after_feedback()
+            st.rerun()
 
 def render_game_over():
     play_se("gameover", f"gameover_screen_{len(st.session_state.history)}")
