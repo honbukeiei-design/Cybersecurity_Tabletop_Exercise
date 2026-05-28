@@ -101,6 +101,23 @@ section[data-testid="stSidebar"] textarea {
     -webkit-text-fill-color: #111827 !important;
 }
 
+/* Sidebar widget readability fixes */
+section[data-testid="stSidebar"] [data-baseweb="select"],
+section[data-testid="stSidebar"] [data-baseweb="select"] * {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="popover"] *,
+div[data-baseweb="popover"] * {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+section[data-testid="stSidebar"] [role="combobox"] {
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+
 h1 {
     color: var(--navy) !important;
     font-size: clamp(1.8rem, 3.2vw, 3.2rem) !important;
@@ -1309,6 +1326,7 @@ def init_state():
 
 
 def reset_game():
+    clear_shared_query_params()
     d = DIFFICULTIES[st.session_state.get("difficulty", "NORMAL")]
     current_mode = st.session_state.get("collab_mode", "個別プレイ")
     current_team = st.session_state.get("collab_team", COLLAB_TEAMS[0])
@@ -1341,8 +1359,7 @@ def reset_game():
                 os.remove(path)
         except Exception:
             pass
-    else:
-        clear_shared_query_params()
+    clear_shared_query_params()
 
 
 def start_simulation():
@@ -1472,7 +1489,7 @@ def maybe_random_event():
         st.session_state.seen_event_ids.add(ev["id"])
         apply_effect(ev["effect"])
         st.session_state.last_event_at = time.time()
-        st.session_state.log.append(f"[EVENT] {ev['title']}")
+        st.session_state.log.append(f"[突発事象] {ev['title']}")
         play_se("event", f"event_{ev['id']}_{len(st.session_state.history)}")
         save_shared_state()
 
@@ -1566,7 +1583,7 @@ def maybe_induce_event(quality: str):
     st.session_state.seen_induced_event_ids.add(ev["id"])
     apply_effect(ev["effect"])
     st.session_state.last_event_at = time.time()
-    st.session_state.log.append(f"[INDUCED EVENT] {ev['title']}")
+    st.session_state.log.append(f"[誘発事象] {ev['title']}")
     play_se("event", f"induced_{ev['id']}_{len(st.session_state.history)}")
     save_shared_state()
     return True
@@ -1575,6 +1592,9 @@ def maybe_induce_event(quality: str):
 def choose(idx: int):
     mode, obj = get_context()
     choices = get_current_choices()
+    if idx < 0 or idx >= len(choices):
+        st.warning("選択肢の取得に失敗しました。画面を更新して再度選択してください。")
+        return
     text, quality = choices[idx]
 
     if quality == "BEST":
@@ -1608,7 +1628,10 @@ def choose(idx: int):
         se_kind = "bad"
 
     base_feedback = obj["feedback"][quality != "BAD"]
-    induced = maybe_induce_event(quality)
+    # 突発イベント対応中は、選択結果によって別の誘発イベントへ即時切替しない。
+    # ここで current_event が差し替わると、フィードバック表示前に画面状態だけが変わり、
+    # 「パラメーターだけ変わって遷移しない」ように見える場合があるため。
+    induced = False if mode == "event" else maybe_induce_event(quality)
     guideline_text = guideline_viewpoint_for(obj["title"])
     induced_text = ""
     if induced and st.session_state.current_event is not None:
@@ -1666,8 +1689,9 @@ def proceed_after_feedback():
     st.session_state.pending_feedback = None
 
     if mode == "event":
-        # 突発イベントを閉じて現在フェーズへ戻る。
+        # 突発イベントを完了し、通常フェーズの状態へ確実に戻す。
         st.session_state.event_expanded = False
+        st.session_state.current_event = None
         st.session_state.phase_started_at = time.time()
     elif st.session_state.current_event is not None and st.session_state.event_expanded:
         # 通常選択の結果、誘発イベントが発生した場合は次フェーズへ進まずイベント対応へ移る。
@@ -2119,7 +2143,7 @@ def render_start_screen():
         """
 <div class="event-box">
   <div class="event-main">
-    <div class="event-label">TRAINING SETUP</div>
+    <div class="event-label">シミュレーション設定</div>
     <div class="event-title">難易度と役割を選択してください</div>
     <div class="event-desc">
       左側の訓練設定パネルで、難易度と役割を設定してください。<br>
@@ -2214,8 +2238,6 @@ def render_event():
 
 def render_choices():
     choices = get_current_choices()
-    heading = "突発事象対応" if (st.session_state.current_event is not None and st.session_state.event_expanded) else "対応方針選択"
-    st.markdown(f"### {heading}")
 
     cols = st.columns(3)
     for i, (text, quality) in enumerate(choices):
@@ -2264,7 +2286,7 @@ def render_feedback():
 
     if st.session_state.game_over:
         render_history_download()
-        if st.button("トレーニングを最初から"):
+        if st.button("シミュレーションを最初から"):
             reset_game()
             st.rerun()
         return
@@ -2296,7 +2318,7 @@ def render_game_over():
     )
     render_history_download()
     render_review_questions()
-    if st.button("トレーニングを最初から"):
+    if st.button("シミュレーションを最初から"):
         play_se("click", f"click_reset_{time.time()}")
         reset_game()
         st.rerun()
@@ -2368,7 +2390,7 @@ def render_clear():
         f"""
 <div class="event-box" style="border-left-color:#2e7d32;background:#f5fbf6;border-color:#bbd7bd;">
   <div class="event-main">
-    <div class="event-label" style="color:#2e7d32;">TRAINING COMPLETE</div>
+    <div class="event-label" style="color:#2e7d32;">シミュレーション完了</div>
     <div class="event-title" style="color:#1b5e20;">総合防御スコア：{score} / {max_score}</div>
     <div class="event-desc">選択履歴とフィードバックをCSVで保存し、院内BCP訓練の振り返りに利用してください。</div>
   </div>
@@ -2378,7 +2400,7 @@ def render_clear():
     )
     render_history_download()
     render_review_questions()
-    if st.button("トレーニングを最初から"):
+    if st.button("シミュレーションを最初から"):
         play_se("click", f"click_reset_{time.time()}")
         reset_game()
         st.rerun()
@@ -2450,7 +2472,7 @@ else:
     st.markdown('<div style="margin-top:-0.2rem;"></div>', unsafe_allow_html=True)
     st.progress(phase_now / total)
     st.markdown(
-        f'<div style="color:#8cff7a;margin:0.25rem 0;">PHASE {phase_now:02d} / {total:02d}　役割：{st.session_state.role}　難易度：{st.session_state.difficulty}</div>',
+        f'<div style="color:#1f2937;margin:0.25rem 0;font-weight:700;">PHASE {phase_now:02d} / {total:02d}　役割：{st.session_state.role}　難易度：{st.session_state.difficulty}</div>',
         unsafe_allow_html=True,
     )
     render_phase()
