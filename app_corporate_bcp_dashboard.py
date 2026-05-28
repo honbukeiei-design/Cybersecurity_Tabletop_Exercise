@@ -616,9 +616,10 @@ def save_shared_state():
 
 
 def sync_shared_state_from_file(force: bool = False):
-    if st.session_state.get("_choice_processing", False) or st.session_state.get("_queued_choice") is not None:
-        return
-    if st.session_state.get("pending_feedback") is not None and not force:
+    # 共有同期は、フィードバック画面表示中でも止めない。
+    # A端末が「次のフェーズへ」「突発イベント対応完了」を押した際に、
+    # B端末がフィードバック画面のままだと同期されない問題を防ぐ。
+    if st.session_state.get("_choice_processing", False):
         return
     if not shared_sync_enabled():
         return
@@ -2141,7 +2142,9 @@ def render_sidebar():
         st.session_state.role = role
         reset_game()
         # 再描画は標準サイクルに任せる
-    st.sidebar.button("設定変更 / リセット", on_click=transition_reset_simulation)
+    if st.sidebar.button("設定変更 / リセット"):
+        transition_reset_simulation()
+        st.rerun()
     if shared_play_enabled() and not st.session_state.get("simulation_started", False):
         st.sidebar.markdown(f'<div class="sidebar-button">共有：{st.session_state.collab_team}<br>自動同期中 / 1フェーズ +5分</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sidebar-button">GL6.0観点に基づく評価</div>', unsafe_allow_html=True)
@@ -2271,7 +2274,9 @@ def render_start_screen():
 """,
             unsafe_allow_html=True,
         )
-        st.button("シミュレーションスタート", on_click=transition_start_simulation)
+        if st.button("シミュレーションスタート"):
+            transition_start_simulation()
+            st.rerun()
 
 
 def render_phase():
@@ -2396,6 +2401,12 @@ def process_queued_choice():
     choose(int(queued.get("idx", -1)))
 
 def render_choices():
+    """選択肢タイルを描画する。
+
+    on_click callback は使わず、ボタン押下を通常の実行コンテキストで処理する。
+    これにより `Calling st.rerun() within a callback is a no-op.` を避けつつ、
+    選択後は必ず評価画面へ即時遷移させる。
+    """
     choices = get_current_choices()
     processing = bool(st.session_state.get("_choice_processing", False))
 
@@ -2403,13 +2414,18 @@ def render_choices():
     for i, (text, quality) in enumerate(choices):
         with cols[i % 3]:
             key_event = st.session_state.current_event["id"] if st.session_state.current_event else "phase"
-            st.button(
+            clicked = st.button(
                 f"{i+1}. {text}",
                 key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
                 disabled=processing,
-                on_click=queue_choice,
-                args=(i,),
             )
+            if clicked:
+                # 即時に二重押下を抑止し、状態更新後に通常の rerun を行う。
+                # callback 内ではないため Streamlit の no-op 警告は出ない。
+                st.session_state["_choice_processing"] = False
+                choose(i)
+                save_shared_state()
+                st.rerun()
 
 def render_feedback():
     fb = st.session_state.pending_feedback
@@ -2449,7 +2465,9 @@ def render_feedback():
 
     if st.session_state.game_over:
         render_history_download()
-        st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
+        if st.button("シミュレーションを最初から"):
+            transition_reset_simulation()
+            st.rerun()
         return
 
     if fb["mode"] == "event":
@@ -2459,7 +2477,10 @@ def render_feedback():
 
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        st.button(button_label, on_click=transition_after_feedback)
+        if st.button(button_label):
+            transition_after_feedback()
+            save_shared_state()
+            st.rerun()
 
 def render_game_over():
     play_se("gameover", f"gameover_screen_{len(st.session_state.history)}")
@@ -2477,7 +2498,9 @@ def render_game_over():
     )
     render_history_download()
     render_review_questions()
-    st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
+    if st.button("シミュレーションを最初から"):
+        transition_reset_simulation()
+        st.rerun()
 
 
 def render_history_download():
@@ -2556,7 +2579,9 @@ def render_clear():
     )
     render_history_download()
     render_review_questions()
-    st.button("シミュレーションを最初から", on_click=transition_reset_simulation)
+    if st.button("シミュレーションを最初から"):
+        transition_reset_simulation()
+        st.rerun()
 
 
 
@@ -2590,21 +2615,23 @@ def apply_runtime_background():
 
 init_state()
 restore_shared_state_from_query()
-process_queued_choice()
+# キュー方式は使わない。ボタン押下時に通常コンテキストで直接処理する。
 
 if st.session_state.pop("_skip_shared_sync_once", False):
     pass
-elif st.session_state.get("pending_feedback") is None and not st.session_state.get("_choice_processing", False):
+elif not st.session_state.get("_choice_processing", False):
     sync_shared_state_from_file()
 
 if (
     st.session_state.get("simulation_started", False)
     and not st.session_state.completed
     and not st.session_state.game_over
-    and st.session_state.pending_feedback is None
     and not st.session_state.get("_choice_processing", False)
 ):
-    auto_refresh(1)
+    # 共有プレイではフィードバック画面中も自動更新し、他端末の遷移を強制同期する。
+    # 個別プレイでは従来どおりフィードバック中はタイマー更新しない。
+    if st.session_state.pending_feedback is None or shared_play_enabled():
+        auto_refresh(1)
 
 if not st.session_state.get("_choice_processing", False):
     maybe_random_event()
