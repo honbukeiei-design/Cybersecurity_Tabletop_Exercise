@@ -2335,7 +2335,6 @@ def render_header():
 <div class="header-grid">
   <div>
     <h1>医療機関サイバーBCP訓練</h1>
-    <div class="subtitle">医療機関向けサイバー攻撃対応机上訓練</div>
   </div>
 </div>
 </div>
