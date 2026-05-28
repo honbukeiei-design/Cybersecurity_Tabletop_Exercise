@@ -2734,6 +2734,11 @@ def render_clear():
 
 
 def apply_runtime_background():
+    """突発イベント時に、イベント画像をメインUI背景として表示する。
+
+    画像が単に最背面へ隠れてしまわないよう、主要カードを半透明化し、
+    背景画像・赤系の緊急オーバーレイ・本文カードを重ねて表示する。
+    """
     if not (
         st.session_state.get("simulation_started", False)
         and st.session_state.get("current_event") is not None
@@ -2746,37 +2751,117 @@ def apply_runtime_background():
     current_event = st.session_state.get("current_event")
     image_path = event_image_path(current_event)
 
+    # 背景の上に乗るUIカードを共通で半透明化するCSS。
+    transparent_panels_css = """
+/* 背景画像を見せるため、本文エリアの塗りを極力なくす */
+[data-testid="stAppViewContainer"],
+.stApp {
+    background-color: transparent !important;
+}
+.block-container {
+    background: transparent !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* 背景画像の上でも本文を読める半透明カード */
+.header-grid,
+.retro-panel-cyan,
+.training-purpose,
+.review-box,
+.event-box,
+.mini-event,
+.feedback-best,
+.feedback-good,
+.feedback-better,
+.feedback-bad,
+.footer-note {
+    background-color: rgba(255, 255, 255, 0.78) !important;
+    border-color: rgba(215, 222, 232, 0.72) !important;
+    box-shadow: 0 14px 34px rgba(15, 34, 61, 0.16) !important;
+    backdrop-filter: blur(7px) saturate(120%);
+    -webkit-backdrop-filter: blur(7px) saturate(120%);
+}
+
+/* 突発イベントカードはやや赤みを残し、緊迫感を維持 */
+.event-box {
+    background: rgba(255, 245, 245, 0.80) !important;
+    border-color: rgba(211, 47, 47, 0.72) !important;
+    border-left-color: #b71c1c !important;
+}
+
+/* フィードバック種別の色味を半透明で維持 */
+.feedback-best,
+.feedback-good {
+    background: rgba(245, 251, 246, 0.82) !important;
+    border-left-color: #2e7d32 !important;
+}
+.feedback-better {
+    background: rgba(255, 250, 240, 0.84) !important;
+    border-left-color: #f9a825 !important;
+}
+.feedback-bad {
+    background: rgba(255, 247, 247, 0.84) !important;
+    border-left-color: #c62828 !important;
+}
+
+/* 選択肢ボタンも少し透過しつつ、クリックしやすさは維持 */
+.stButton > button {
+    background: rgba(23, 59, 108, 0.92) !important;
+    border-color: rgba(18, 49, 92, 0.95) !important;
+    box-shadow: 0 8px 20px rgba(23, 59, 108, 0.20) !important;
+}
+.stButton > button:hover {
+    background: rgba(54, 94, 149, 0.96) !important;
+}
+
+/* 表・データフレーム周辺の白塗りを少し抑える */
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+    background: rgba(255, 255, 255, 0.84) !important;
+    border-radius: 12px;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+"""
+
     if image_path:
         image_uri = image_file_to_data_uri(image_path)
         st.markdown(
             f"""
 <style>
-.stApp {{
+/* 背景画像レイヤー：画面全体へ固定表示 */
+[data-testid="stAppViewContainer"]::before {{
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
     background-image:
-        linear-gradient(90deg, rgba(255,241,241,0.98) 0%, rgba(255,241,241,0.93) 42%, rgba(255,241,241,0.72) 100%),
-        url('{image_uri}') !important;
-    background-position: center center, right 3vw center !important;
-    background-size: cover, min(44vw, 680px) auto !important;
-    background-repeat: no-repeat, no-repeat !important;
-    background-attachment: fixed, fixed !important;
+        linear-gradient(90deg, rgba(255, 241, 241, 0.82) 0%, rgba(255, 241, 241, 0.58) 48%, rgba(255, 241, 241, 0.22) 100%),
+        url('{image_uri}');
+    background-position: center center, right 3vw center;
+    background-size: cover, min(46vw, 720px) auto;
+    background-repeat: no-repeat, no-repeat;
+    background-attachment: fixed, fixed;
 }}
-.block-container {{
-    background: linear-gradient(180deg, rgba(255,241,241,0.90), rgba(243,246,250,0.88));
-    border-radius: 16px;
+
+/* Streamlit本文を背景レイヤーより前面へ */
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stAppViewContainer"] section.main {{
+    position: relative;
+    z-index: 1;
 }}
-.event-box {{
-    background: rgba(255,232,232,0.94) !important;
-    border-color: #d32f2f !important;
-    border-left-color: #b71c1c !important;
-    box-shadow: 0 12px 28px rgba(198,40,40,0.18) !important;
-}}
-.retro-panel-cyan, .feedback-best, .feedback-better, .feedback-bad, .training-purpose, .review-box {{
-    background-color: rgba(255,255,255,0.94) !important;
-}}
+
+{transparent_panels_css}
+
 @media (max-width: 900px) {{
-    .stApp {{
-        background-position: center center, center bottom !important;
-        background-size: cover, 78vw auto !important;
+    [data-testid="stAppViewContainer"]::before {{
+        background-image:
+            linear-gradient(180deg, rgba(255, 241, 241, 0.88) 0%, rgba(255, 241, 241, 0.58) 52%, rgba(255, 241, 241, 0.36) 100%),
+            url('{image_uri}');
+        background-position: center center, center bottom;
+        background-size: cover, 82vw auto;
     }}
 }}
 </style>
@@ -2785,16 +2870,19 @@ def apply_runtime_background():
         )
     else:
         st.markdown(
-            """
+            f"""
 <style>
-.stApp { background: #fff1f1 !important; }
-.block-container { background: linear-gradient(180deg, rgba(255,241,241,0.96), rgba(243,246,250,0.96)); }
-.event-box {
-    background: #ffe8e8 !important;
-    border-color: #d32f2f !important;
-    border-left-color: #b71c1c !important;
-    box-shadow: 0 12px 28px rgba(198,40,40,0.14) !important;
-}
+[data-testid="stAppViewContainer"]::before {{
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 78% 34%, rgba(198, 40, 40, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(255, 241, 241, 0.94), rgba(243, 246, 250, 0.86));
+}}
+{transparent_panels_css}
 </style>
 """,
             unsafe_allow_html=True,
