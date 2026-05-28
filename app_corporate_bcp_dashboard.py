@@ -483,6 +483,7 @@ SHARED_PHASE_BONUS_SECONDS = 5 * 60
 
 COLLAB_EXCLUDE_KEYS = {
     "bgm_volume", "se_volume", "bgm_enabled", "se_enabled", "last_se_key", "_choice_processing",
+    "_queued_choice", "_skip_shared_sync_once", "_queued_se",
     "collab_mode_input", "collab_team_input",
     "manual_shared_refresh_sidebar", "manual_shared_refresh_main",
 }
@@ -555,8 +556,11 @@ def import_shared_state(data: dict, keep_identity: bool = True):
     current_se = st.session_state.get("se_volume", 70)
     current_bgm_enabled = st.session_state.get("bgm_enabled", True)
     current_se_enabled = st.session_state.get("se_enabled", True)
+    current_queued_choice = st.session_state.get("_queued_choice")
+    current_choice_processing = st.session_state.get("_choice_processing", False)
+    current_queued_se = st.session_state.get("_queued_se")
     for key in list(st.session_state.keys()):
-        if key not in ["collab_mode", "collab_team", "collab_mode_input", "collab_team_input", "bgm_volume", "se_volume", "bgm_enabled", "se_enabled"]:
+        if key not in ["collab_mode", "collab_team", "collab_mode_input", "collab_team_input", "bgm_volume", "se_volume", "bgm_enabled", "se_enabled", "_queued_choice", "_choice_processing", "_queued_se"]:
             del st.session_state[key]
     for key, value in data.items():
         if key == "_shared_saved_at" or is_transient_widget_key(key):
@@ -569,6 +573,12 @@ def import_shared_state(data: dict, keep_identity: bool = True):
     st.session_state["se_volume"] = current_se
     st.session_state["bgm_enabled"] = current_bgm_enabled
     st.session_state["se_enabled"] = current_se_enabled
+    if current_queued_choice is not None:
+        st.session_state["_queued_choice"] = current_queued_choice
+    if current_choice_processing:
+        st.session_state["_choice_processing"] = current_choice_processing
+    if current_queued_se is not None:
+        st.session_state["_queued_se"] = current_queued_se
     st.session_state["_shared_loaded_at"] = float(data.get("_shared_saved_at", time.time()))
 
 
@@ -606,6 +616,10 @@ def save_shared_state():
 
 
 def sync_shared_state_from_file(force: bool = False):
+    if st.session_state.get("_choice_processing", False) or st.session_state.get("_queued_choice") is not None:
+        return
+    if st.session_state.get("pending_feedback") is not None and not force:
+        return
     if not shared_sync_enabled():
         return
     data = load_shared_state()
@@ -1706,6 +1720,7 @@ def choose(idx: int):
         play_se(se_kind, f"feedback_{len(st.session_state.history)}_{result}")
         check_status_game_over(triggered_by_choice=True)
         st.session_state._choice_processing = False
+        st.session_state["_skip_shared_sync_once"] = True
         save_shared_state()
         set_shared_query_params()
     except Exception as exc:
@@ -2318,6 +2333,68 @@ def render_event():
         )
 
 
+
+def current_choice_context_signature() -> dict:
+    """選択肢表示時点の文脈を識別するための署名。"""
+    mode, obj = get_context()
+    return {
+        "mode": mode,
+        "phase": st.session_state.get("phase"),
+        "role": st.session_state.get("role"),
+        "event_id": obj.get("id") if mode == "event" else None,
+        "event_expanded": bool(st.session_state.get("event_expanded", False)),
+    }
+
+
+def queue_choice(idx: int):
+    """ボタン押下時は選択内容だけを記録し、実処理は次の通常実行の先頭で行う。
+
+    Streamlit のボタン callback 内でゲーム状態を大きく変更すると、
+    自動更新・共有同期・イベント発生処理と競合して「リスク値だけ更新され、
+    フィードバック画面へ入らない」表示になり得るため、ここでは処理しない。
+    """
+    if st.session_state.get("_choice_processing", False):
+        return
+    if st.session_state.get("pending_feedback") is not None:
+        return
+    if not st.session_state.get("simulation_started", False):
+        return
+    if st.session_state.get("completed", False) or st.session_state.get("game_over", False):
+        return
+    sig = current_choice_context_signature()
+    sig["idx"] = int(idx)
+    sig["queued_at"] = time.time()
+    st.session_state["_queued_choice"] = sig
+    st.session_state["_choice_processing"] = True
+
+
+def process_queued_choice():
+    """予約された選択を、画面分岐より前に1回だけ確定処理する。"""
+    queued = st.session_state.pop("_queued_choice", None)
+    if not queued:
+        return
+
+    # ここからは通常実行コンテキストなので、choose() が状態更新しても
+    # この同じ実行内で pending_feedback 分岐へ進める。
+    st.session_state["_choice_processing"] = False
+
+    if st.session_state.get("pending_feedback") is not None:
+        return
+    if not st.session_state.get("simulation_started", False):
+        return
+    if st.session_state.get("completed", False) or st.session_state.get("game_over", False):
+        return
+
+    current = current_choice_context_signature()
+    expected = {k: queued.get(k) for k in ["mode", "phase", "role", "event_id", "event_expanded"]}
+    actual = {k: current.get(k) for k in ["mode", "phase", "role", "event_id", "event_expanded"]}
+    if expected != actual:
+        st.session_state.setdefault("log", []).append("[WARN] 選択時点と現在の画面状態が異なるため選択を破棄")
+        save_shared_state()
+        return
+
+    choose(int(queued.get("idx", -1)))
+
 def render_choices():
     choices = get_current_choices()
     processing = bool(st.session_state.get("_choice_processing", False))
@@ -2330,7 +2407,7 @@ def render_choices():
                 f"{i+1}. {text}",
                 key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
                 disabled=processing,
-                on_click=choose,
+                on_click=queue_choice,
                 args=(i,),
             )
 
@@ -2513,17 +2590,24 @@ def apply_runtime_background():
 
 init_state()
 restore_shared_state_from_query()
-sync_shared_state_from_file()
+process_queued_choice()
+
+if st.session_state.pop("_skip_shared_sync_once", False):
+    pass
+elif st.session_state.get("pending_feedback") is None and not st.session_state.get("_choice_processing", False):
+    sync_shared_state_from_file()
 
 if (
     st.session_state.get("simulation_started", False)
     and not st.session_state.completed
     and not st.session_state.game_over
-    and (shared_sync_enabled() or st.session_state.pending_feedback is None)
+    and st.session_state.pending_feedback is None
+    and not st.session_state.get("_choice_processing", False)
 ):
     auto_refresh(1)
 
-maybe_random_event()
+if not st.session_state.get("_choice_processing", False):
+    maybe_random_event()
 check_timeout()
 check_status_game_over()
 apply_runtime_background()
