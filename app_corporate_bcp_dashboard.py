@@ -580,6 +580,89 @@ def import_shared_state(data: dict, keep_identity: bool = True):
     if current_queued_se is not None:
         st.session_state["_queued_se"] = current_queued_se
     st.session_state["_shared_loaded_at"] = float(data.get("_shared_saved_at", time.time()))
+    ensure_state_integrity()
+
+
+def normalize_loaded_feedback_keys(obj):
+    """JSON共有後に bool キーが文字列化されてもフィードバック参照できるよう補正する。"""
+    if not isinstance(obj, dict):
+        return obj
+    fb = obj.get("feedback")
+    if isinstance(fb, dict):
+        fixed = {}
+        for k, v in fb.items():
+            if k is True or str(k).lower() == "true":
+                fixed[True] = v
+            elif k is False or str(k).lower() == "false":
+                fixed[False] = v
+            else:
+                fixed[k] = v
+        obj["feedback"] = fixed
+    return obj
+
+
+def ensure_state_integrity():
+    """共有同期・旧版JSON読込後の欠損キーや型ズレを補正し、一瞬の AttributeError を防ぐ。"""
+    if st.session_state.get("difficulty") not in DIFFICULTIES:
+        st.session_state["difficulty"] = "NORMAL"
+    if st.session_state.get("role") not in ROLES:
+        st.session_state["role"] = "職員"
+    if st.session_state.get("collab_mode") not in ["個別プレイ", "チームで共有プレイ"]:
+        st.session_state["collab_mode"] = "個別プレイ"
+    if st.session_state.get("collab_team") not in COLLAB_TEAMS:
+        st.session_state["collab_team"] = COLLAB_TEAMS[0]
+
+    defaults = DIFFICULTIES[st.session_state.get("difficulty", "NORMAL")]
+    scalar_defaults = {
+        "simulation_started": False,
+        "completed": False,
+        "game_over": False,
+        "pending_feedback": None,
+        "pending_induced_event": None,
+        "phase": 0,
+        "infection": defaults["infection"],
+        "panic": defaults["panic"],
+        "bcp": defaults["bcp"],
+        "trust": defaults["trust"],
+        "started_at": time.time(),
+        "phase_started_at": time.time(),
+        "last_event_at": time.time(),
+        "current_event": None,
+        "event_expanded": False,
+        "bgm_volume": 35,
+        "se_volume": 70,
+        "bgm_enabled": True,
+        "se_enabled": True,
+        "last_se_key": None,
+        "_choice_processing": False,
+    }
+    for key, value in scalar_defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+    if not isinstance(st.session_state.get("history"), list):
+        st.session_state["history"] = []
+    if not isinstance(st.session_state.get("log"), list):
+        st.session_state["log"] = ["[SYSTEM] セットアップ待機"]
+    if not isinstance(st.session_state.get("choice_orders"), dict):
+        st.session_state["choice_orders"] = {}
+
+    for set_key in ["seen_event_ids", "seen_induced_event_ids"]:
+        value = st.session_state.get(set_key, set())
+        if isinstance(value, list):
+            st.session_state[set_key] = set(value)
+        elif not isinstance(value, set):
+            st.session_state[set_key] = set()
+
+    try:
+        st.session_state["phase"] = max(0, min(int(st.session_state.get("phase", 0)), len(PHASES) - 1))
+    except Exception:
+        st.session_state["phase"] = 0
+
+    if st.session_state.get("current_event") is not None:
+        st.session_state["current_event"] = normalize_loaded_feedback_keys(st.session_state.get("current_event"))
+    if st.session_state.get("pending_induced_event") is not None:
+        st.session_state["pending_induced_event"] = normalize_loaded_feedback_keys(st.session_state.get("pending_induced_event"))
 
 
 def load_shared_state(team=None):
@@ -692,7 +775,7 @@ def render_shared_status():
 
 
 def current_phase_limit() -> int:
-    limit = DIFFICULTIES[st.session_state.difficulty]["limit"]
+    limit = DIFFICULTIES[st.session_state.get("difficulty", "NORMAL")]["limit"]
     if shared_play_enabled():
         limit += SHARED_PHASE_BONUS_SECONDS
     return limit
@@ -734,6 +817,27 @@ def guideline_viewpoint_for(title: str) -> str:
         title,
         "医療情報システム安全管理ガイドライン第6.0版の観点：安全管理責任、運用管理規程、アクセス制御、ログ管理、BCP、教育・周知。"
     )
+
+
+def feedback_text_for(obj: dict, good: bool) -> str:
+    """boolキー/JSON文字列化キーの両方に対応したフィードバック取得。"""
+    fb = obj.get("feedback", {}) if isinstance(obj, dict) else {}
+    if not isinstance(fb, dict):
+        return str(fb) if fb else "判断結果を記録しました。"
+    candidates = [good, str(good), str(good).lower(), str(good).upper()]
+    for key in candidates:
+        if key in fb:
+            return fb[key]
+    # 品質ラベル形式のフィードバックが将来混在しても落ちないようにする
+    if good:
+        for key in ["BEST", "BETTER", "GOOD", "true", "True"]:
+            if key in fb:
+                return fb[key]
+    else:
+        for key in ["BAD", "NG", "false", "False"]:
+            if key in fb:
+                return fb[key]
+    return "判断結果を記録しました。"
 
 
 
@@ -1443,7 +1547,7 @@ def seconds_to_next_refresh() -> Optional[int]:
     if rem <= 0:
         return 1
 
-    event_interval = DIFFICULTIES[st.session_state.difficulty]["event"]
+    event_interval = DIFFICULTIES[st.session_state.get("difficulty", "NORMAL")]["event"]
     if event_interval is None:
         return rem
 
@@ -1499,7 +1603,7 @@ def maybe_random_event():
     if st.session_state.current_event is not None and st.session_state.event_expanded:
         return
 
-    interval = DIFFICULTIES[st.session_state.difficulty]["event"]
+    interval = DIFFICULTIES[st.session_state.get("difficulty", "NORMAL")]["event"]
     if interval is None:
         return
 
@@ -1526,7 +1630,7 @@ def maybe_random_event():
 def get_context():
     if st.session_state.current_event is not None and st.session_state.event_expanded:
         return "event", st.session_state.current_event
-    return "phase", PHASES[st.session_state.phase]
+    return "phase", PHASES[int(st.session_state.get("phase", 0))]
 
 
 def normalize_choices(raw_choices: List[tuple]) -> List[tuple]:
@@ -1670,7 +1774,7 @@ def choose(idx: int):
             feedback_prefix = "危険な判断です。この対応により追加インシデントを誘発する可能性があります。"
             se_kind = "bad"
 
-        base_feedback = obj["feedback"][quality != "BAD"]
+        base_feedback = feedback_text_for(obj, quality != "BAD")
 
         # 通常フェーズの選択だけが、次画面以降の突発イベントを誘発できる。
         # 突発イベント対応中は別イベントを発生させない。
@@ -1726,7 +1830,7 @@ def choose(idx: int):
         set_shared_query_params()
     except Exception as exc:
         st.session_state._choice_processing = False
-        st.session_state.log.append(f"[ERROR] 選択処理: {exc}")
+        st.session_state.log.append(f"[ERROR] 選択処理: {type(exc).__name__}: {exc}")
         save_shared_state()
 
 def proceed_after_feedback():
@@ -2071,7 +2175,7 @@ def render_timer_widget():
         label = "終了"
         remaining = 0
         limit = current_phase_limit()
-    elif st.session_state.pending_feedback is not None:
+    elif st.session_state.get("pending_feedback") is not None:
         label = "STOP"
         remaining = remaining_time()
         limit = current_phase_limit()
@@ -2413,7 +2517,7 @@ def render_choices():
     cols = st.columns(3)
     for i, (text, quality) in enumerate(choices):
         with cols[i % 3]:
-            key_event = st.session_state.current_event["id"] if st.session_state.current_event else "phase"
+            key_event = st.session_state.get("current_event", {}).get("id", "phase") if st.session_state.get("current_event") else "phase"
             clicked = st.button(
                 f"{i+1}. {text}",
                 key=f"choice_{st.session_state.phase}_{st.session_state.role}_{i}_{key_event}",
@@ -2614,18 +2718,21 @@ def apply_runtime_background():
 # ============================================================
 
 init_state()
+ensure_state_integrity()
 restore_shared_state_from_query()
+ensure_state_integrity()
 # キュー方式は使わない。ボタン押下時に通常コンテキストで直接処理する。
 
 if st.session_state.pop("_skip_shared_sync_once", False):
     pass
 elif not st.session_state.get("_choice_processing", False):
     sync_shared_state_from_file()
+ensure_state_integrity()
 
 if (
     st.session_state.get("simulation_started", False)
-    and not st.session_state.completed
-    and not st.session_state.game_over
+    and not st.session_state.get("completed", False)
+    and not st.session_state.get("game_over", False)
     and not st.session_state.get("_choice_processing", False)
 ):
     # 共有プレイではフィードバック画面中も自動更新し、他端末の遷移を強制同期する。
@@ -2645,14 +2752,14 @@ render_shared_status()
 
 if not st.session_state.get("simulation_started", False):
     render_start_screen()
-elif st.session_state.pending_feedback is not None:
+elif st.session_state.get("pending_feedback") is not None:
     phase_now = st.session_state.phase + 1
     total = len(PHASES)
     st.progress(phase_now / total)
     render_feedback()
-elif st.session_state.game_over:
+elif st.session_state.get("game_over", False):
     render_game_over()
-elif st.session_state.completed:
+elif st.session_state.get("completed", False):
     render_clear()
 else:
     phase_now = st.session_state.phase + 1
